@@ -36,7 +36,6 @@ public class Advisors {
     public static class PollMethodAdvisor {
         @Advice.OnMethodExit(suppress = Throwable.class)
         public static <K, V> void onExit(@Advice.Return(readOnly = false) ConsumerRecords<K, V> records) {
-            System.out.println(records.isEmpty());
             records = RecordProcessor.process(records);
         }
     }
