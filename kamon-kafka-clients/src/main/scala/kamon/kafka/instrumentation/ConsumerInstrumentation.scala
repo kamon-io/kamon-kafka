@@ -40,7 +40,6 @@ class ConsumerInstrumentation extends KanelaInstrumentation {
 }
 
 object RecordProcessor {
-
   /**
     * Inject Context into Records
     */
@@ -65,6 +64,7 @@ object RecordProcessor {
               .withMetricTag("span.kind", "consumer")
               .withTag("kafka.partition", partition.partition)
               .withTag("kafka.topic", topic)
+              .withTag("kafka.offset", record.offset)
               .withFrom(instant)
               .start()
           })
