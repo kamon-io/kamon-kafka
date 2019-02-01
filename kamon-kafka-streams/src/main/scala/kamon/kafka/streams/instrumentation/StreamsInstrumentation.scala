@@ -49,17 +49,15 @@ class StreamsInstrumentation extends KanelaInstrumentation {
 class ProcessMethodAdvisor
 object ProcessMethodAdvisor {
   @Advice.OnMethodEnter
-  def enter(): Context =
+  def onEnter(): Context =
     Kamon.currentContext()
 
   @Advice.OnMethodExit(onThrowable = classOf[Throwable], suppress = classOf[Throwable])
-  def exit(@Advice.This obj:StreamTask, @Advice.Enter ctx: Context, @Advice.Thrown throwable: Throwable):Unit = {
+  def onExit(@Advice.This streamTask:StreamTask, @Advice.Enter ctx: Context, @Advice.Thrown throwable: Throwable):Unit = {
     val currentSpan = Kamon.currentSpan
+    currentSpan.mark(s"kafka.streams.task.id=${streamTask.id()}")
 
-    currentSpan.mark(s"kafka.streams.task.id=${obj.asInstanceOf[StreamTask].id()}")
-
-    if(throwable != null)
-      currentSpan.addError(throwable.getMessage).finish()
+    if(throwable != null) currentSpan.addError(throwable.getMessage)
 
     currentSpan.finish()
     Kamon.storeContext(ctx)
@@ -69,7 +67,7 @@ object ProcessMethodAdvisor {
 class NextRecordMethodAdvisor
 object NextRecordMethodAdvisor {
   @Advice.OnMethodExit(suppress = classOf[Throwable])
-  def startSpan(@Advice.Return record: StampedRecord): Unit = {
+  def onExit(@Advice.Return record: StampedRecord): Unit = {
     if (record != null) {
       val header = Option(record.headers.lastHeader("kamon-context"))
       val currentContext = header.map(h => Kamon.contextCodec.Binary.decode(ByteBuffer.wrap(h.value))).getOrElse(Context.Empty)
