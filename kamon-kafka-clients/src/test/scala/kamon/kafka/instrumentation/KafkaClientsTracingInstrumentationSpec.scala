@@ -15,6 +15,7 @@
 
 package kamon.kafka.instrumentation
 
+import com.typesafe.config.{Config, ConfigFactory}
 import kamon.Kamon
 import kamon.testkit.{MetricInspection, Reconfigure, TestSpanReporter}
 import kamon.trace.Span.TagValue
@@ -73,6 +74,36 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           span.tags("span.kind") shouldBe TagValue.String("consumer")
           span.tags("kafka.partition") shouldBe TagValue.Number(0)
           span.tags("kafka.topic") shouldBe TagValue.String("kamon.topic")
+          reporter.nextSpan() shouldBe None
+        }
+      }
+    }
+
+    "create a Producer/Consumer Span when publish/consume a message without follow-strategy" in {
+      withRunningKafka {
+
+        Kamon.reconfigure(ConfigFactory.parseString("kamon.kafka.follow-strategy = false").withFallback(Kamon.config()))
+
+        publishStringMessageToKafka("kamon.topic", "Hello world!!!")
+        consumeFirstStringMessageFrom("kamon.topic") shouldBe "Hello world!!!"
+
+        eventually(timeout(10 seconds)) {
+          val span = reporter.nextSpan().value
+          span.operationName shouldBe "kafka.produce"
+          span.tags("span.kind") shouldBe TagValue.String("producer")
+          span.tags("kafka.key") shouldBe TagValue.String("unknown-key")
+          span.tags("kafka.partition") shouldBe TagValue.String("unknown-partition")
+          span.tags("kafka.topic") shouldBe TagValue.String("kamon.topic")
+        }
+
+        eventually(timeout(10 seconds)) {
+          val span = reporter.nextSpan().value
+          span.operationName shouldBe "poll"
+          span.tags("span.kind") shouldBe TagValue.String("consumer")
+          span.tags("kafka.partition") shouldBe TagValue.Number(0)
+          span.tags("kafka.topic") shouldBe TagValue.String("kamon.topic")
+          span.tags("trace.related.trace_id") should not be null
+          span.tags("trace.related.span_id") should not be null
           reporter.nextSpan() shouldBe None
         }
       }
