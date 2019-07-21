@@ -15,11 +15,12 @@
 
 package kamon.kafka.instrumentation
 
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.ConfigFactory
 import kamon.Kamon
-import kamon.testkit.{MetricInspection, Reconfigure, TestSpanReporter}
-import kamon.trace.Span.TagValue
-import kamon.util.Registration
+import kamon.module.Module.Registration
+import kamon.tag.Lookups._
+import kamon.testkit.{Reconfigure, TestSpanReporter}
+import kamon.trace.Span
 import net.manub.embeddedkafka.{Consumers, EmbeddedKafka}
 import org.scalatest.concurrent.Eventually
 import org.scalatest.time.SpanSugar
@@ -31,7 +32,7 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
   with SpanSugar
   with BeforeAndAfterAll
   with EmbeddedKafka
-  with MetricInspection
+//  with MetricInspection
   with Reconfigure
   with OptionValues with Consumers {
 
@@ -44,10 +45,10 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         eventually(timeout(10 seconds)) {
           val span = reporter.nextSpan().value
           span.operationName shouldBe "kafka.produce"
-          span.tags("span.kind") shouldBe TagValue.String("producer")
-          span.tags("kafka.key") shouldBe TagValue.String("unknown-key")
-          span.tags("kafka.partition") shouldBe TagValue.String("unknown-partition")
-          span.tags("kafka.topic") shouldBe TagValue.String("kamon.topic")
+          span.tags.get(plain("span.kind")) shouldBe "producer"
+          span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
+          span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
+          span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
           reporter.nextSpan() shouldBe None
         }
       }
@@ -62,18 +63,18 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         eventually(timeout(10 seconds)) {
           val span = reporter.nextSpan().value
           span.operationName shouldBe "kafka.produce"
-          span.tags("span.kind") shouldBe TagValue.String("producer")
-          span.tags("kafka.key") shouldBe TagValue.String("unknown-key")
-          span.tags("kafka.partition") shouldBe TagValue.String("unknown-partition")
-          span.tags("kafka.topic") shouldBe TagValue.String("kamon.topic")
+          span.tags.get(plain("span.kind")) shouldBe "producer"
+          span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
+          span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
+          span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
         }
 
         eventually(timeout(10 seconds)) {
           val span = reporter.nextSpan().value
           span.operationName shouldBe "poll"
-          span.tags("span.kind") shouldBe TagValue.String("consumer")
-          span.tags("kafka.partition") shouldBe TagValue.Number(0)
-          span.tags("kafka.topic") shouldBe TagValue.String("kamon.topic")
+          span.tags.get(plain("span.kind")) shouldBe "consumer"
+          span.tags.get(plainLong("kafka.partition")) shouldBe 0L
+          span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
           reporter.nextSpan() shouldBe None
         }
       }
@@ -90,20 +91,20 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         eventually(timeout(10 seconds)) {
           val span = reporter.nextSpan().value
           span.operationName shouldBe "kafka.produce"
-          span.tags("span.kind") shouldBe TagValue.String("producer")
-          span.tags("kafka.key") shouldBe TagValue.String("unknown-key")
-          span.tags("kafka.partition") shouldBe TagValue.String("unknown-partition")
-          span.tags("kafka.topic") shouldBe TagValue.String("kamon.topic")
+          span.tags.get(plain("span.kind")) shouldBe "producer"
+          span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
+          span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
+          span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
         }
 
         eventually(timeout(10 seconds)) {
           val span = reporter.nextSpan().value
           span.operationName shouldBe "poll"
-          span.tags("span.kind") shouldBe TagValue.String("consumer")
-          span.tags("kafka.partition") shouldBe TagValue.Number(0)
-          span.tags("kafka.topic") shouldBe TagValue.String("kamon.topic")
-          span.tags("trace.related.trace_id") should not be null
-          span.tags("trace.related.span_id") should not be null
+          span.tags.get(plain("span.kind")) shouldBe "consumer"
+          span.tags.get(plainLong("kafka.partition")) shouldBe 0L
+          span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
+          span.tags.get(plain("trace.related.trace_id")) should not be null
+          span.tags.get(plain("trace.related.span_id")) should not be null
           reporter.nextSpan() shouldBe None
         }
       }
@@ -111,12 +112,12 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
   }
 
   var registration: Registration = _
-  val reporter = new TestSpanReporter()
+  val reporter = new TestSpanReporter.BufferingSpanReporter
 
   override protected def beforeAll(): Unit = {
     enableFastSpanFlushing()
     sampleAlways()
-    registration = Kamon.addReporter(reporter)
+    registration = Kamon.registerModule("TestSpanReporter", reporter)
   }
 
   override protected def afterAll(): Unit = {

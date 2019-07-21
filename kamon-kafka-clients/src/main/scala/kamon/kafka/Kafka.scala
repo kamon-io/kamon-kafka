@@ -17,7 +17,7 @@
 package kamon.kafka
 
 import com.typesafe.config.Config
-import kamon.{Kamon, OnReconfigureHook}
+import kamon.Kamon
 
 object Kafka {
   @volatile var followStrategy: Boolean = followStrategyFromConfig(Kamon.config())
@@ -25,9 +25,8 @@ object Kafka {
   private def followStrategyFromConfig(config: Config): Boolean =
     Kamon.config.getBoolean("kamon.kafka.follow-strategy")
 
-  Kamon.onReconfigure(new OnReconfigureHook {
-    override def onReconfigure(newConfig: Config): Unit = {
+  Kamon.onReconfigure( (newConfig: Config) => {
       followStrategy = followStrategyFromConfig(newConfig)
     }
-  })
+  )
 }

@@ -14,7 +14,7 @@ the requests you are doing are behaving.
 
 ### Getting Started
 
-Kamon Cassandra module is currently available for Scala 2.11 and 2.12.
+Kamon Kafka module is currently available for Scala 2.11 and 2.12.
 
 Supported releases and dependencies are shown below.
 

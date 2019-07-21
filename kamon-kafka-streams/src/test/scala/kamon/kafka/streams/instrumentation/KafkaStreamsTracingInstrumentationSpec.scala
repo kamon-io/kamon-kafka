@@ -15,10 +15,10 @@
 
 package kamon.kafka.streams.instrumentation
 
+import kamon.module.Module.Registration
 import kamon.Kamon
-import kamon.testkit.{MetricInspection, Reconfigure, TestSpanReporter}
-import kamon.trace.Span.TagValue
-import kamon.util.Registration
+import kamon.tag.Lookups._
+import kamon.testkit.{Reconfigure, TestSpanReporter}
 import net.manub.embeddedkafka.Codecs._
 import net.manub.embeddedkafka.ConsumerExtensions._
 import net.manub.embeddedkafka.EmbeddedKafkaConfig
@@ -36,7 +36,6 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
   with Eventually
   with SpanSugar
   with BeforeAndAfterAll
-  with MetricInspection
   with Reconfigure
   with OptionValues {
 
@@ -69,31 +68,31 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         eventually(timeout(10 seconds)) {
           val span = reporter.nextSpan().value
           span.operationName shouldBe "kafka.produce"
-          span.tags("span.kind") shouldBe TagValue.String("producer")
-          span.tags("kafka.key") shouldBe TagValue.String("hello")
-          span.tags("kafka.partition") shouldBe TagValue.String("unknown-partition")
-          span.tags("kafka.topic") shouldBe TagValue.String("in")
+          span.tags.get(plain("span.kind")) shouldBe "producer"
+          span.tags.get(plain("kafka.key")) shouldBe "hello"
+          span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
+          span.tags.get(plain("kafka.topic")) shouldBe "in"
         }
 
         eventually(timeout(10 seconds)) {
           val span = reporter.nextSpan().value
           span.operationName shouldBe "stream"
-          span.tags("span.kind") shouldBe TagValue.String("consumer")
-          span.tags("kafka.partition") shouldBe TagValue.Number(0)
-          span.tags("kafka.topic") shouldBe TagValue.String("in")
-          span.tags("kafka.offset") shouldBe TagValue.Number(0)
+          span.tags.get(plain("span.kind")) shouldBe "consumer"
+          span.tags.get(plainLong("kafka.partition")) shouldBe 0L
+          span.tags.get(plain("kafka.topic")) shouldBe "in"
+          span.tags.get(plainLong("kafka.offset")) shouldBe 0L
         }
       }
     }
   }
 
   var registration: Registration = _
-  val reporter = new TestSpanReporter()
+  val reporter = new TestSpanReporter.BufferingSpanReporter()
 
   override protected def beforeAll(): Unit = {
     enableFastSpanFlushing()
     sampleAlways()
-    registration = Kamon.addReporter(reporter)
+    registration = Kamon.registerModule("testReporter", reporter)
   }
 
   override protected def afterAll(): Unit = {

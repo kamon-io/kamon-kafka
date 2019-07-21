@@ -16,28 +16,28 @@
 
 package kamon.kafka.instrumentation
 
+import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 
+import com.typesafe.config.{Config, ConfigFactory}
 import kamon.Kamon
-import kamon.context.Context
-import kamon.kafka.Kafka
+import kamon.context.BinaryPropagation.{ByteStreamReader, ByteStreamWriter}
+import kamon.context.{BinaryPropagation, Context}
+import kamon.kafka.{ContextSpanBinaryEncoder, Kafka}
 import kamon.kafka.client.instrumentation.advisor.Advisors.PollMethodAdvisor
-import kamon.trace.Span
-import kanela.agent.scala.KanelaInstrumentation
+import kamon.trace.{Span, Trace}
+import kanela.agent.api.instrumentation.InstrumentationBuilder
 import org.apache.kafka.clients.consumer.ConsumerRecords
 
 import scala.collection.mutable
 
-class ConsumerInstrumentation extends KanelaInstrumentation {
+class ConsumerInstrumentation extends InstrumentationBuilder {
 
   /**
     * Instruments org.apache.kafka.clients.consumer.KafkaConsumer::poll(long)
     */
-  forTargetType("org.apache.kafka.clients.consumer.KafkaConsumer") { builder =>
-    builder
-      .withAdvisorFor(method("poll").and(withArgument(0, classOf[Long])), classOf[PollMethodAdvisor])
-      .build()
-  }
+  onType("org.apache.kafka.clients.consumer.KafkaConsumer")
+    .advise(method("poll").and(withArgument(0, classOf[Long])), classOf[PollMethodAdvisor])
 }
 
 object RecordProcessor {
@@ -57,27 +57,26 @@ object RecordProcessor {
         records.records(partition).forEach(record => {
           val header = Option(record.headers.lastHeader("kamon-context"))
 
-          val currentContext = header.map(h => Kamon.contextCodec.Binary.decode(ByteBuffer.wrap(h.value))).getOrElse(Context.Empty)
+          val currentContext = header.map(h => ContextSpanBinaryEncoder.decode(h.value())).getOrElse(Context.Empty)
 
           val span = consumerSpansForTopic.getOrElseUpdate(topic, {
-            val spanBuilder = Kamon.buildSpan("poll")
-              .withMetricTag("span.kind", "consumer")
-              .withTag("kafka.partition", partition.partition)
-              .withTag("kafka.topic", topic)
-              .withTag("kafka.offset", record.offset)
-              .withFrom(instant)
+            val spanBuilder = Kamon.spanBuilder("poll")
+              .tag("span.kind", "consumer")
+              .tag("kafka.partition", partition.partition)
+              .tag("kafka.topic", topic)
+              .tag("kafka.offset", record.offset)
 
-            if(Kafka.followStrategy) spanBuilder.asChildOf(currentContext.get(Span.ContextKey))
+            if(Kafka.followStrategy) spanBuilder.asChildOf(currentContext.get(Span.Key))
             else {
-              val context = currentContext.get(Span.ContextKey).context()
-              spanBuilder.withTag("trace.related.trace_id", context.traceID.string)
-              spanBuilder.withTag("trace.related.span_id", context.spanID.string)
+              val currentSpan = currentContext.get(Span.Key)
+              spanBuilder
+                .tag("trace.related.trace_id", currentSpan.id.string)
+                .tag("trace.related.span_id", currentSpan.trace.id.string)
             }
             spanBuilder.start()
           })
 
-          val ctx = currentContext.withKey(Span.ContextKey, span)
-          record.headers.add("kamon-context", Kamon.contextCodec.Binary.encode(ctx).array())
+          record.headers.add("kamon-context",ContextSpanBinaryEncoder.encode(currentContext, span))
         })
       })
 

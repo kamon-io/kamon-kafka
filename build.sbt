@@ -13,9 +13,9 @@
  * =========================================================================================
  */
 
-val kamonCore           = "io.kamon"            %% "kamon-core"                       % "1.1.3"
-val kamonTestkit        = "io.kamon"            %% "kamon-testkit"                    % "1.1.3"
-val scalaExtension      = "io.kamon"            %% "kanela-scala-extension"           % "0.0.10"
+val kamonCore           = "io.kamon"            %% "kamon-core"                       % "2.0.0-RC1"
+val kamonTestkit        = "io.kamon"            %% "kamon-testkit"                    % "2.0.0-RC1"
+val scalaExtension      = "io.kamon"            %% "kamon-instrumentation-common"     % "2.0.0-RC2"
 
 val kafkaClient         = "org.apache.kafka"    % "kafka-clients"	                    % "0.11.0.0"
 val kafkaStreams        = "org.apache.kafka"    % "kafka-streams"	                    % "2.0.0"
@@ -36,7 +36,7 @@ lazy val kafkaClients = (project in file("kamon-kafka-clients"))
   .settings(name := "kamon-kafka-clients")
   .settings(scalaVersion := "2.12.8")
   .settings(crossScalaVersions := Seq("2.11.12", "2.12.8"))
-  .settings(javaAgents += "io.kamon" % "kanela-agent" % "0.0.15" % "compile;test")
+  .settings(javaAgents += "io.kamon" % "kanela-agent" % "1.0.0-RC4" % "compile;test")
   .settings(resolvers += Resolver.bintrayRepo("kamon-io", "snapshots"))
   .settings(resolvers += Resolver.mavenLocal)
   .settings(
@@ -52,7 +52,7 @@ lazy val kafkaStream = (project in file("kamon-kafka-streams"))
   .settings(name := "kamon-kafka-streams")
   .settings(scalaVersion := "2.12.8")
   .settings(crossScalaVersions := Seq("2.11.12", "2.12.8"))
-  .settings(javaAgents += "io.kamon"    % "kanela-agent"   % "0.0.15"  % "compile;test")
+  .settings(javaAgents += "io.kamon"    % "kanela-agent"   % "1.0.0-RC4"  % "compile;test")
   .settings(resolvers += Resolver.bintrayRepo("kamon-io", "snapshots"))
   .settings(resolvers += Resolver.mavenLocal)
   .settings(

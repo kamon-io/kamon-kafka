@@ -18,6 +18,7 @@ package kamon.kafka.client.instrumentation.advisor;
 
 import kamon.Kamon;
 import kamon.context.Storage;
+import kamon.kafka.ContextSpanBinaryEncoder;
 import kamon.kafka.instrumentation.ProducerCallback;
 import kamon.kafka.instrumentation.RecordProcessor;
 import kamon.trace.Span;
@@ -48,25 +49,24 @@ public class Advisors {
         public static void onEnter(@Advice.Argument(value = 0, readOnly = false) ProducerRecord record,
                                    @Advice.Argument(value = 1, readOnly = false) Callback callback,
                                    @Advice.Local("scope") Storage.Scope scope) {
-
             val currentContext = Kamon.currentContext();
             val topic = record.topic() == null ? "kafka" : record.topic();
             val partition = record.partition() == null ? "unknown-partition" : record.partition().toString();
             val value = record.key() == null ? "unknown-key" : record.key().toString();
 
-            val span = Kamon.buildSpan("kafka.produce")
-                    .asChildOf(currentContext.get(Span.ContextKey()))
-                    .withMetricTag("span.kind", "producer")
-                    .withTag("kafka.key", value)
-                    .withTag("kafka.partition", partition)
-                    .withTag("kafka.topic", topic)
+            val span = Kamon.producerSpanBuilder("kafka.produce", "kafkaPublisher")
+                    .asChildOf(currentContext.get(Span.Key()))
+                    .tag("span.kind", "producer")
+                    .tag("kafka.key", value)
+                    .tag("kafka.partition", partition)
+                    .tag("kafka.topic", topic)
                     .start();
 
-            val ctx = currentContext.withKey(Span.ContextKey(), span);
+            val ctx = currentContext.withKey(Span.Key(), span);
 
-            record.headers().add("kamon-context", Kamon.contextCodec().Binary().encode(ctx).array());
+            record.headers().add("kamon-context", ContextSpanBinaryEncoder.encode(ctx, span));
 
-            scope = Kamon.storeContext(ctx);
+            scope = Kamon.store(ctx);
             callback = new ProducerCallback(callback, scope);
 
         }
@@ -75,8 +75,8 @@ public class Advisors {
         public static void onExit(@Advice.Local("scope") Storage.Scope scope,
                                   @Advice.Thrown final Throwable throwable) {
 
-            val span = scope.context().get(Span.ContextKey());
-            if (throwable != null) span.addError(throwable.getMessage(), throwable);
+            val span = scope.context().get(Span.Key());
+            if (throwable != null) span.fail(throwable.getMessage(), throwable);
             span.finish();
             scope.close();
         }

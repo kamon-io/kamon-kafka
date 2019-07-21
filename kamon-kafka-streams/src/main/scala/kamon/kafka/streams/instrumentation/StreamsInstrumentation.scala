@@ -20,47 +20,41 @@ import java.nio.ByteBuffer
 
 import kamon.Kamon
 import kamon.context.Context
+import kamon.kafka.ContextSpanBinaryEncoder
 import kamon.trace.Span
+import kanela.agent.api.instrumentation.InstrumentationBuilder
 import kanela.agent.libs.net.bytebuddy.asm.Advice
-import kanela.agent.scala.KanelaInstrumentation
 import org.apache.kafka.streams.processor.internals.{StampedRecord, StreamTask}
 
 
-class StreamsInstrumentation extends KanelaInstrumentation {
+class StreamsInstrumentation extends InstrumentationBuilder {
   /**
     * Instruments org.apache.kafka.streams.processor.internals.StreamTask::process
     */
-  forTargetType("org.apache.kafka.streams.processor.internals.StreamTask") { builder =>
-    builder
-      .withAdvisorFor(method("process"), classOf[ProcessMethodAdvisor])
-      .build()
-  }
+  onType("org.apache.kafka.streams.processor.internals.StreamTask")
+    .advise(method("process"), classOf[ProcessMethodAdvisor])
 
   /**
     * Instruments org.apache.kafka.streams.processor.internals.PartitionGroup::nextRecord
     */
-  forTargetType("org.apache.kafka.streams.processor.internals.PartitionGroup") { builder =>
-    builder
-      .withAdvisorFor(method("nextRecord").and(withReturnTypes(classOf[org.apache.kafka.streams.processor.internals.StampedRecord])), classOf[NextRecordMethodAdvisor])
-      .build()
-  }
+  onType("org.apache.kafka.streams.processor.internals.PartitionGroup")
+    .advise(method("nextRecord").and(withReturnTypes(classOf[org.apache.kafka.streams.processor.internals.StampedRecord])), classOf[NextRecordMethodAdvisor])
 }
 
 class ProcessMethodAdvisor
 object ProcessMethodAdvisor {
   @Advice.OnMethodEnter
-  def onEnter(): Context =
-    Kamon.currentContext()
+  def onEnter(): Context = Kamon.currentContext()
 
   @Advice.OnMethodExit(onThrowable = classOf[Throwable], suppress = classOf[Throwable])
   def onExit(@Advice.This streamTask:StreamTask, @Advice.Enter ctx: Context, @Advice.Thrown throwable: Throwable):Unit = {
     val currentSpan = Kamon.currentSpan
     currentSpan.mark(s"kafka.streams.task.id=${streamTask.id()}")
 
-    if(throwable != null) currentSpan.addError(throwable.getMessage)
+    if(throwable != null) currentSpan.fail(throwable.getMessage)
 
     currentSpan.finish()
-    Kamon.storeContext(ctx)
+    Kamon.store(ctx)
   }
 }
 
@@ -70,17 +64,17 @@ object NextRecordMethodAdvisor {
   def onExit(@Advice.Return record: StampedRecord): Unit = {
     if (record != null) {
       val header = Option(record.headers.lastHeader("kamon-context"))
-      val currentContext = header.map(h => Kamon.contextCodec.Binary.decode(ByteBuffer.wrap(h.value))).getOrElse(Context.Empty)
+      val currentContext = header.map(h => ContextSpanBinaryEncoder.decode(h.value)).getOrElse(Context.Empty)
 
-      val span = Kamon.buildSpan("stream")
-        .asChildOf(currentContext.get(Span.ContextKey))
-        .withMetricTag("span.kind", "consumer")
-        .withTag("kafka.partition", record.partition)
-        .withTag("kafka.topic", record.topic)
-        .withTag("kafka.offset", record.offset)
+      val span = Kamon.spanBuilder("stream")
+        .asChildOf(currentContext.get(Span.Key))
+        .tag("span.kind", "consumer")
+        .tag("kafka.partition", record.partition)
+        .tag("kafka.topic", record.topic)
+        .tag("kafka.offset", record.offset)
         .start()
 
-      Kamon.storeContext(Context.create(Span.ContextKey, span))
+      Kamon.store(Context.of(Span.Key, span))
     }
   }
 }

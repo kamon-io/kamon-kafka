@@ -19,19 +19,17 @@ package kamon.kafka.instrumentation
 import kamon.context.Storage.Scope
 import kamon.kafka.client.instrumentation.advisor.Advisors.SendMethodAdvisor
 import kamon.trace.Span
-import kanela.agent.scala.KanelaInstrumentation
+import kanela.agent.api.instrumentation.InstrumentationBuilder
 import org.apache.kafka.clients.producer.{Callback, RecordMetadata}
 
-class ProducerInstrumentation extends KanelaInstrumentation {
+class ProducerInstrumentation extends InstrumentationBuilder {
 
   /**
     * Instruments "org.apache.kafka.clients.producer.KafkaProducer::Send()
     */
-  forTargetType("org.apache.kafka.clients.producer.KafkaProducer") { builder =>
-    builder
-      .withAdvisorFor(method("send").and(takesArguments(2)), classOf[SendMethodAdvisor])
-      .build()
-  }
+  onType("org.apache.kafka.clients.producer.KafkaProducer")
+    .advise(method("send").and(takesArguments(2)), classOf[SendMethodAdvisor])
+
 }
 
 /**
@@ -39,8 +37,8 @@ class ProducerInstrumentation extends KanelaInstrumentation {
   */
 final class ProducerCallback(callback: Callback, scope: Scope) extends Callback {
   override def onCompletion(metadata: RecordMetadata, exception: Exception): Unit = {
-    val span = scope.context.get(Span.ContextKey)
-    if(exception != null) span.addError(exception.getMessage, exception)
+    val span = scope.context.get(Span.Key)
+    if(exception != null) span.fail(exception.getMessage, exception)
     try if(callback != null) callback.onCompletion(metadata, exception)
     finally {
       span.finish()
