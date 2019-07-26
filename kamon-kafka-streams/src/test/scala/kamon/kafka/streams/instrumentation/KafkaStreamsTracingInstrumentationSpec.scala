@@ -19,11 +19,13 @@ import kamon.module.Module.Registration
 import kamon.Kamon
 import kamon.tag.Lookups._
 import kamon.testkit.{Reconfigure, TestSpanReporter}
+import kamon.trace.Span
 import net.manub.embeddedkafka.Codecs._
 import net.manub.embeddedkafka.ConsumerExtensions._
 import net.manub.embeddedkafka.EmbeddedKafkaConfig
 import net.manub.embeddedkafka.streams.EmbeddedKafkaStreamsAllInOne
 import org.apache.kafka.common.serialization.{Serde, Serdes}
+import org.apache.kafka.streams.scala
 import org.apache.kafka.streams.StreamsBuilder
 import org.apache.kafka.streams.kstream.{Consumed, KStream, Produced}
 import org.scalatest.concurrent.Eventually
@@ -84,8 +86,35 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         }
       }
     }
+
+    "ensure continuation of traces from 'regular' publishers and streams" in {
+      import scala.ImplicitConversions._
+      import org.apache.kafka.streams.scala.Serdes.String
+
+      val streamBuilder = new scala.StreamsBuilder
+      streamBuilder.stream[String,String](inTopic)
+          .to(outTopic)
+
+      runStreams(Seq(inTopic, outTopic), streamBuilder.build()) {
+        publishToKafka(inTopic, "hello", "world!")
+
+        withConsumer[String, String, Unit] { consumer =>
+          val consumedMessages: Stream[(String, String)] =  consumer.consumeLazily(outTopic)
+          consumedMessages.take(1) should be(Seq("hello" -> "world!"))
+        }
+
+        eventually(timeout(10 seconds)) {
+          // reportedSpans.foreach(s => println(s"name=${s.operationName}, tags=${s.tags}, marks=${s.marks}"))
+          val span = reporter.nextSpan().value
+          reportedSpans = span :: reportedSpans
+          reportedSpans should have size 4
+          reportedSpans.map(_.trace.id.string).distinct should have size 1
+        }
+      }
+    }
   }
 
+  var reportedSpans: List[Span.Finished] = Nil
   var registration: Registration = _
   val reporter = new TestSpanReporter.BufferingSpanReporter()
 
