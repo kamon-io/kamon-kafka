@@ -63,6 +63,7 @@ object RecordProcessor {
             val spanBuilder = Kamon.spanBuilder("poll")
               .tag("span.kind", "consumer")
               .tag("kafka.partition", partition.partition)
+              .tag("kafka.key", record.key().toString)
               .tag("kafka.topic", topic)
               .tag("kafka.offset", record.offset)
 
