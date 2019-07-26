@@ -63,9 +63,11 @@ object RecordProcessor {
             val spanBuilder = Kamon.spanBuilder("poll")
               .tag("span.kind", "consumer")
               .tag("kafka.partition", partition.partition)
-              .tag("kafka.key", record.key().toString)
               .tag("kafka.topic", topic)
               .tag("kafka.offset", record.offset)
+
+            // Key could be optional ... see tests
+            Option(record.key()).foreach(k => spanBuilder.tag("kafka.key", record.key().toString))
 
             if(Kafka.followStrategy) spanBuilder.asChildOf(currentContext.get(Span.Key))
             else {
