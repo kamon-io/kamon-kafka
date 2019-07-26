@@ -93,7 +93,8 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
       val streamBuilder = new scala.StreamsBuilder
       streamBuilder.stream[String,String](inTopic)
-          .to(outTopic)
+        .mapValues((k,v) => v)
+        .to(outTopic)
 
       runStreams(Seq(inTopic, outTopic), streamBuilder.build()) {
         publishToKafka(inTopic, "hello", "world!")
@@ -104,10 +105,11 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         }
 
         eventually(timeout(10 seconds)) {
-          // reportedSpans.foreach(s => println(s"name=${s.operationName}, tags=${s.tags}, marks=${s.marks}"))
-          val span = reporter.nextSpan().value
-          reportedSpans = span :: reportedSpans
-          reportedSpans should have size 4
+          reporter.nextSpan().foreach{ s =>
+            reportedSpans = s :: reportedSpans
+          }
+          dumpSpans
+          reportedSpans should have size 6
           reportedSpans.map(_.trace.id.string).distinct should have size 1
         }
       }
@@ -117,6 +119,13 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
   var reportedSpans: List[Span.Finished] = Nil
   var registration: Registration = _
   val reporter = new TestSpanReporter.BufferingSpanReporter()
+
+  def dumpSpans = {
+    println("Spans:")
+    reportedSpans.foreach{s =>
+      println(s"name=${s.operationName}\n\ttags=${s.tags}, marks=${s.marks}")
+    }
+  }
 
   override protected def beforeAll(): Unit = {
     enableFastSpanFlushing()
