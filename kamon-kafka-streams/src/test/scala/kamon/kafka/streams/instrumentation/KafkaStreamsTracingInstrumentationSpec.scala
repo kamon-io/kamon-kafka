@@ -30,13 +30,14 @@ import org.apache.kafka.streams.StreamsBuilder
 import org.apache.kafka.streams.kstream.{Consumed, KStream, Produced}
 import org.scalatest.concurrent.Eventually
 import org.scalatest.time.SpanSugar
-import org.scalatest.{BeforeAndAfterAll, Matchers, OptionValues, WordSpec}
+import org.scalatest.{BeforeAndAfter, BeforeAndAfterAll, Matchers, OptionValues, WordSpec}
 
 class KafkaStreamsTracingInstrumentationSpec extends WordSpec
   with EmbeddedKafkaStreamsAllInOne
   with Matchers
   with Eventually
   with SpanSugar
+  with BeforeAndAfter
   with BeforeAndAfterAll
   with Reconfigure
   with OptionValues {
@@ -94,6 +95,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       val streamBuilder = new scala.StreamsBuilder
       streamBuilder.stream[String,String](inTopic)
         .mapValues((k,v) => v)
+        .mapValues((k,v) => v)
         .to(outTopic)
 
       runStreams(Seq(inTopic, outTopic), streamBuilder.build()) {
@@ -104,12 +106,12 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
           consumedMessages.take(1) should be(Seq("hello" -> "world!"))
         }
 
-        eventually(timeout(10 seconds)) {
+        eventually(timeout(5 seconds)) {
           reporter.nextSpan().foreach{ s =>
             reportedSpans = s :: reportedSpans
           }
           dumpSpans
-          reportedSpans should have size 6
+          reportedSpans should have size 7
           reportedSpans.map(_.trace.id.string).distinct should have size 1
         }
       }
@@ -125,6 +127,11 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
     reportedSpans.foreach{s =>
       println(s"name=${s.operationName}\n\ttags=${s.tags}, marks=${s.marks}")
     }
+  }
+
+  before {
+    reportedSpans = Nil
+    reporter.clear()
   }
 
   override protected def beforeAll(): Unit = {

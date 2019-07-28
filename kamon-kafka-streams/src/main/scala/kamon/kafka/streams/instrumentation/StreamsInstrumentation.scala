@@ -21,14 +21,21 @@ import java.nio.ByteBuffer
 import kamon.Kamon
 import kamon.context.Context
 import kamon.kafka.ContextSpanBinaryEncoder
+import kamon.kafka.stream.instrumentation.advisor.Advisors.NextRecordMethodAdvisor
 import kamon.trace.Span
 import kanela.agent.api.instrumentation.InstrumentationBuilder
 import kanela.agent.libs.net.bytebuddy.asm.Advice
+import kanela.agent.libs.net.bytebuddy.asm.Advice.{FieldValue, Local}
+import kanela.agent.libs.net.bytebuddy.jar.asm.commons.Method
+import lombok.Value
 import org.apache.kafka.streams.processor.internals.PartitionGroup.RecordInfo
 import org.apache.kafka.streams.processor.internals.{ProcessorNode, StampedRecord, StreamTask}
 
 
 class StreamsInstrumentation extends InstrumentationBuilder {
+
+  println("======> StreamsInstrumentation running")
+
   /**
     * Instruments org.apache.kafka.streams.processor.internals.StreamTask::process
     */
@@ -53,24 +60,26 @@ class ProcessorNodeProcessMethodAdvisor
 object ProcessorNodeProcessMethodAdvisor {
   @Advice.OnMethodEnter
   def onEnter(@Advice.This node: ProcessorNode[_,_]): Context = {
-    println(s"==> ProcessorNode.onEnter node=${node.name()} / ${node.hashCode()}")
-    val currentContext = Kamon.currentContext()
+    val currentSpan = Kamon.currentSpan()
+    println(s"==> ProcessorNode.onEnter node=${node.name()} / hashCode=${node.hashCode()} / currentSpan=${currentSpan.id} / parentSpan=${currentSpan.parentId}")
     val span = Kamon.spanBuilder("node")
-      .asChildOf(currentContext.get(Span.Key))
+      .asChildOf(currentSpan)
       .tag("span.kind", "processor")
       .tag("kafka.stream.node", node.name())
       .start()
-    Kamon.store(Context.of(Span.Key, span))
-    currentContext
+
+    println(s"    -> NEW SPAN currentSpan=${span.id} / parentSpan=${span.parentId}")
+    Context.of(Span.Key, span)
   }
 
   @Advice.OnMethodExit(onThrowable = classOf[Throwable], suppress = classOf[Throwable])
   def onExit(@Advice.This node: ProcessorNode[_,_], @Advice.Enter ctx: Context, @Advice.Thrown throwable: Throwable):Unit = {
-    println(s"==> ProcessorNode.onExit node=${node.name()} / ${node.hashCode()}")
-    val currentSpan = Kamon.currentSpan
+    val currentSpan = ctx.get(Span.Key)
+    println(s"==> ProcessorNode.onExit node=${node.name()} / ${node.hashCode()}/  currentSpan=${currentSpan.id} / parentSpan=${currentSpan.parentId}")
     if(throwable != null) currentSpan.fail(throwable.getMessage)
+    println(s"   -> finishing ${currentSpan.id}")
     currentSpan.finish()
-    Kamon.store(ctx)
+//    Kamon.store(ctx)
   }
 }
 
@@ -79,42 +88,23 @@ object ProcessMethodAdvisor {
   @Advice.OnMethodEnter
   def onEnter(@Advice.This streamTask:StreamTask): Context = {
     println(s"==> StreamTask.onEnter node=${streamTask.id()} / ${streamTask.hashCode()}")
-    Kamon.currentContext()
+    Kamon.currentContext() // todo: Why should this be required since it seems to contain only Span.Empty?
   }
 
   @Advice.OnMethodExit(onThrowable = classOf[Throwable], suppress = classOf[Throwable])
-  def onExit(@Advice.This streamTask:StreamTask, @Advice.Enter ctx: Context, @Advice.Thrown throwable: Throwable):Unit = {
-    println(s"==> StreamTask.onExit node=${streamTask.id()} / ${streamTask.hashCode()}")
-    val currentSpan = Kamon.currentSpan
+  def onExit(@Advice.Origin r: Any, @Advice.This streamTask:StreamTask, @Advice.Enter ctx: Context, @Advice.Thrown throwable: Throwable):Unit = {
+
+    val currentSpan = Kamon.currentSpan() //ctx.get(Span.Key)
+    println(s"==> StreamTask.onExit node=${streamTask.id()} / hash=${streamTask.hashCode()} / currentSpan=${currentSpan.id} / parentSpan=${currentSpan.parentId}")
     currentSpan.mark(s"kafka.streams.task.id=${streamTask.id()}")
     currentSpan.tag("kafka.applicationId", streamTask.applicationId())
 
     if(throwable != null) currentSpan.fail(throwable.getMessage)
-
-    currentSpan.finish()
-    Kamon.store(ctx)
+    println(s"   -> finishing ${currentSpan.id}")
+    currentSpan.finish() // todo: This is potentially performed multiple times if a NULL record was fetched
+//    Kamon.store(ctx)
   }
 }
 
-class NextRecordMethodAdvisor
-object NextRecordMethodAdvisor {
-  @Advice.OnMethodExit(suppress = classOf[Throwable])
-  def onExit(@Advice.Argument(0) recordInfo: RecordInfo, @Advice.Return record: StampedRecord): Unit = {
-    if (record != null) {
-      val header = Option(record.headers.lastHeader("kamon-context"))
-
-      val currentContext = header.map(h => ContextSpanBinaryEncoder.decode(h.value)).getOrElse(Context.Empty)
-      val span = Kamon.spanBuilder("stream")
-        .asChildOf(currentContext.get(Span.Key))
-        .tag("span.kind", "consumer")
-        .tag("kafka.partition", record.partition)
-        .tag("kafka.topic", record.topic)
-        .tag("kafka.offset", record.offset)
-        .tag("kafka.stream.node", recordInfo.node().name().replace('\n', ' '))
-        .start()
-
-      Kamon.store(Context.of(Span.Key, span))
-    }
-  }
-}
+class StampedRecordWithSpan(record: StampedRecord, val span: Span) extends StampedRecord(record.value, record.timestamp)
 
