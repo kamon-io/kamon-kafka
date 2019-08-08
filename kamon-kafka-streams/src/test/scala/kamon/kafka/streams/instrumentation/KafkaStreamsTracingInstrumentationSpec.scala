@@ -18,7 +18,6 @@ package kamon.kafka.streams.instrumentation
 import com.typesafe.config.ConfigFactory
 import kamon.module.Module.Registration
 import kamon.Kamon
-import kamon.kafka.Kafka
 import kamon.tag.Lookups._
 import kamon.testkit.{Reconfigure, TestSpanReporter}
 import kamon.trace.Span
@@ -123,7 +122,6 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
           reporter.nextSpan().foreach{ s =>
             reportedSpans = s :: reportedSpans
           }
-          dumpSpans
           reportedSpans should have size 7
           reportedSpans.map(_.trace.id.string).distinct should have size 1
         }
@@ -134,13 +132,6 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
   var reportedSpans: List[Span.Finished] = Nil
   var registration: Registration = _
   val reporter = new TestSpanReporter.BufferingSpanReporter()
-
-  def dumpSpans = {
-    println("Spans:")
-    reportedSpans.foreach{s =>
-      println(s"name=${s.operationName}\n\ttraceId=${s.trace.id.toString}\n\tspanId=${s.id.toString}\n\tparent=${s.parentId}\n\ttags=${s.tags}, marks=${s.marks}")
-    }
-  }
 
   before {
     reportedSpans = Nil

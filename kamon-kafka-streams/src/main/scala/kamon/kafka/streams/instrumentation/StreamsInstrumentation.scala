@@ -16,24 +16,16 @@
 
 package kamon.kafka.streams.instrumentation
 
-import java.nio.ByteBuffer
-
 import kamon.Kamon
 import kamon.context.Context
 import kamon.kafka.stream.instrumentation.advisor.Advisors.NextRecordMethodAdvisor
 import kamon.trace.Span
 import kanela.agent.api.instrumentation.InstrumentationBuilder
 import kanela.agent.libs.net.bytebuddy.asm.Advice
-import kanela.agent.libs.net.bytebuddy.asm.Advice.{FieldValue, Local}
-import kanela.agent.libs.net.bytebuddy.jar.asm.commons.Method
-import lombok.Value
-import org.apache.kafka.streams.processor.internals.PartitionGroup.RecordInfo
 import org.apache.kafka.streams.processor.internals.{ProcessorNode, StampedRecord, StreamTask}
 
 
 class StreamsInstrumentation extends InstrumentationBuilder {
-
-  println("======> StreamsInstrumentation running")
 
   /**
     * Instruments org.apache.kafka.streams.processor.internals.StreamTask::process
@@ -60,22 +52,18 @@ object ProcessorNodeProcessMethodAdvisor {
   @Advice.OnMethodEnter
   def onEnter(@Advice.This node: ProcessorNode[_,_]): Context = {
     val currentSpan = Kamon.currentSpan()
-    println(s"==> ProcessorNode.onEnter node=${node.name()} / currentSpan=${currentSpan.id} / parentSpan=${currentSpan.parentId}")
     val span = Kamon.spanBuilder("node")
       .asChildOf(currentSpan)
       .tag("span.kind", "processor")
       .tag("kafka.stream.node", node.name())
       .start()
-    println(s"    -> NEW SPAN currentSpan=${span.id} / parentSpan=${span.parentId}")
     Context.of(Span.Key, span)
   }
 
   @Advice.OnMethodExit(onThrowable = classOf[Throwable], suppress = classOf[Throwable])
   def onExit(@Advice.This node: ProcessorNode[_,_], @Advice.Enter ctx: Context, @Advice.Thrown throwable: Throwable):Unit = {
     val currentSpan = ctx.get(Span.Key)
-    println(s"==> ProcessorNode.onExit node=${node.name()} / currentSpan=${currentSpan.id} / parentSpan=${currentSpan.parentId}")
     if(throwable != null) currentSpan.fail(throwable.getMessage)
-    println(s"   -> finishing ${currentSpan.id}")
     currentSpan.finish()
   }
 }
@@ -84,7 +72,6 @@ class ProcessMethodAdvisor
 object ProcessMethodAdvisor {
   @Advice.OnMethodEnter
   def onEnter(@Advice.This streamTask:StreamTask): Context = {
-    println(s"==> StreamTask.onEnter node=${streamTask.id()}")
     Kamon.currentContext() // todo: Why should this be required since it seems to contain only Span.Empty?
   }
 
@@ -92,13 +79,11 @@ object ProcessMethodAdvisor {
   def onExit(@Advice.Origin r: Any, @Advice.This streamTask:StreamTask, @Advice.Return recordProcessed: Boolean, @Advice.Enter ctx: Context, @Advice.Thrown throwable: Throwable):Unit = {
 
     val currentSpan = Kamon.currentSpan()
-    println(s"==> StreamTask.onExit node=${streamTask.id()} / processed=$recordProcessed / currentSpan=${currentSpan.id} / parentSpan=${currentSpan.parentId}")
     if(recordProcessed) {
       currentSpan.mark(s"kafka.streams.task.id=${streamTask.id()}")
       currentSpan.tag("kafka.applicationId", streamTask.applicationId())
 
       if(throwable != null) currentSpan.fail(throwable.getMessage)
-      println(s"   -> finishing ${currentSpan.id}")
       currentSpan.finish()
     }
   }

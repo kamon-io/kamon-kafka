@@ -27,11 +27,9 @@ public class Advisors {
 
         @Advice.OnMethodExit(suppress = Throwable.class)
         public static void  onExit(@Advice.Argument(0) PartitionGroup.RecordInfo recordInfo, @Advice.Return(readOnly = false) StampedRecord record) {
-            System.out.println("==> NextRecord.onExit");
             if (record != null) {
                 val header = record.headers().lastHeader("kamon-context");
                 val currentContext = getContext(header);
-                System.out.println("    -> currentSpan="+ Kamon.currentSpan().id().toString() + " / parentSpan=" + Kamon.currentSpan().parentId().toString());
                 val span = Kamon.spanBuilder("stream")
                         .asChildOf(currentContext.get(Span.Key()))
                         .tag("span.kind", "consumer")
@@ -40,10 +38,8 @@ public class Advisors {
                         .tag("kafka.offset", record.offset())
                         .tag("kafka.stream.node", recordInfo.node().name().replace('\n', ' '))
                         .start();
-                System.out.println("    -> NEW SPAN currentSpan=" + span.id().toString() +" / parentSpan=" + span.parentId().toString());
                 Kamon.store(Context.of(Span.Key(), span));
                 record = new StampedRecordWithSpan(record, span);
-            } else {
             }
         }
     }
