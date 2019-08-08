@@ -82,7 +82,7 @@ object RecordProcessor {
           })
 
           val out = new ByteArrayOutputStream();
-          Kamon.defaultBinaryPropagation().write(currentContext.withKey(Span.Key, span), ByteStreamWriter.of(out));
+          Kamon.defaultBinaryPropagation().write(currentContext.withEntry(Span.Key, span), ByteStreamWriter.of(out));
 
           record.headers.add("kamon-context", out.toByteArray)
         })

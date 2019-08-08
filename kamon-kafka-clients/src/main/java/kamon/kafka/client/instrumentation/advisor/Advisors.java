@@ -62,7 +62,7 @@ public class Advisors {
                     .tag("kafka.topic", topic)
                     .start();
 
-            val ctx = currentContext.withKey(Span.Key(), span);
+            val ctx = currentContext.withEntry(Span.Key(), span);
 
             val out = new ByteArrayOutputStream();
             // ugly, ugly, ugly ... :(
@@ -70,7 +70,7 @@ public class Advisors {
 
             record.headers().add("kamon-context", out.toByteArray());
 
-            scope = Kamon.store(ctx);
+            scope = Kamon.storeContext(ctx);
             callback = new ProducerCallback(callback, scope);
 
         }

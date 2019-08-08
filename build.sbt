@@ -13,13 +13,13 @@
  * =========================================================================================
  */
 
-val kamonCore           = "io.kamon"            %% "kamon-core"                       % "2.0.0-RC1"
-val kamonTestkit        = "io.kamon"            %% "kamon-testkit"                    % "2.0.0-RC1"
-val scalaExtension      = "io.kamon"            %% "kamon-instrumentation-common"     % "2.0.0-RC2"
+val kamonCore           = "io.kamon"            %% "kamon-core"                       % "2.0.0"
+val kamonTestkit        = "io.kamon"            %% "kamon-testkit"                    % "2.0.0"
+val scalaExtension      = "io.kamon"            %% "kamon-instrumentation-common"     % "2.0.0"
 
 val kafkaClient         = "org.apache.kafka"    % "kafka-clients"	                    % "0.11.0.0"
 val kafkaStreams        = "org.apache.kafka"    % "kafka-streams"	                    % "2.0.0"
-val kafkaStreamsScala   = "org.apache.kafka"    %% "kafka-streams-scala"	              % "2.0.0"
+val kafkaStreamsScala   = "org.apache.kafka"    %% "kafka-streams-scala"	            % "2.0.0"
 
 val kafkaTest           = "net.manub"           %% "scalatest-embedded-kafka"         % "2.0.0"
 val kafkaStreamTest     = "net.manub"           %% "scalatest-embedded-kafka-streams" % "2.0.0"
