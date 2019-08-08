@@ -15,8 +15,10 @@
 
 package kamon.kafka.streams.instrumentation
 
+import com.typesafe.config.ConfigFactory
 import kamon.module.Module.Registration
 import kamon.Kamon
+import kamon.kafka.Kafka
 import kamon.tag.Lookups._
 import kamon.testkit.{Reconfigure, TestSpanReporter}
 import kamon.trace.Span
@@ -44,7 +46,10 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
   import net.manub.embeddedkafka.Codecs.stringKeyValueCrDecoder
 
-  implicit val config = EmbeddedKafkaConfig(kafkaPort = 7000, zooKeeperPort = 7001)
+  // increase zk connection timeout to avoid failing tests in "slow" environments
+  implicit val defaultConfig: EmbeddedKafkaConfig =
+    EmbeddedKafkaConfig.apply(
+      customBrokerProperties = EmbeddedKafkaConfig(kafkaPort = 7000, zooKeeperPort = 7001).customBrokerProperties + ("zookeeper.connection.timeout.ms" -> "20000"))
 
   val (inTopic, outTopic) = ("in", "out")
 
@@ -88,14 +93,22 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       }
     }
 
-    "ensure continuation of traces from 'regular' publishers and streams" in {
+    "ensure continuation of traces from 'regular' publishers and streams with 'followStrategy' " in {
       import scala.ImplicitConversions._
       import org.apache.kafka.streams.scala.Serdes.String
 
+      // Explicitly enable follow-strategy
+      Kamon.reconfigure(ConfigFactory.parseString("kamon.kafka.follow-strategy = true").withFallback(Kamon.config()))
+      kamon.kafka.Kafka.followStrategy shouldBe true
+
       val streamBuilder = new scala.StreamsBuilder
       streamBuilder.stream[String,String](inTopic)
+        .filter((k,v) => true)
         .mapValues((k,v) => v)
-        .mapValues((k,v) => v)
+// todo: add detailed aggregate logging, including traceId of the previous update to the aggregate object
+//        .groupByKey
+//        .aggregate(""){ (k,v, agg) =>agg + v}
+//        .toStream
         .to(outTopic)
 
       runStreams(Seq(inTopic, outTopic), streamBuilder.build()) {
@@ -125,7 +138,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
   def dumpSpans = {
     println("Spans:")
     reportedSpans.foreach{s =>
-      println(s"name=${s.operationName}\n\ttags=${s.tags}, marks=${s.marks}")
+      println(s"name=${s.operationName}\n\ttraceId=${s.trace.id.toString}\n\tspanId=${s.id.toString}\n\tparent=${s.parentId}\n\ttags=${s.tags}, marks=${s.marks}")
     }
   }
 

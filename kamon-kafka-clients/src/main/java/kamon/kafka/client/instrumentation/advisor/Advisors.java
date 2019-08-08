@@ -17,7 +17,6 @@ package kamon.kafka.client.instrumentation.advisor;
 
 import kamon.Kamon;
 import kamon.context.Storage;
-import kamon.kafka.ContextSpanBinaryEncoder;
 import kamon.kafka.instrumentation.ProducerCallback;
 import kamon.kafka.instrumentation.RecordProcessor;
 import kamon.trace.Span;
@@ -27,6 +26,8 @@ import lombok.val;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.ProducerRecord;
+
+import java.io.ByteArrayOutputStream;
 
 @Value
 public class Advisors {
@@ -63,7 +64,11 @@ public class Advisors {
 
             val ctx = currentContext.withKey(Span.Key(), span);
 
-            record.headers().add("kamon-context", ContextSpanBinaryEncoder.encode(ctx, span));
+            val out = new ByteArrayOutputStream();
+            // ugly, ugly, ugly ... :(
+            Kamon.defaultBinaryPropagation().write(ctx, kamon.context.BinaryPropagation$ByteStreamWriter$.MODULE$.of(out));
+
+            record.headers().add("kamon-context", out.toByteArray());
 
             scope = Kamon.store(ctx);
             callback = new ProducerCallback(callback, scope);

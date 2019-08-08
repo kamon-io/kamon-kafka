@@ -21,7 +21,7 @@ import kamon.module.Module.Registration
 import kamon.tag.Lookups._
 import kamon.testkit.{Reconfigure, TestSpanReporter}
 import kamon.trace.Span
-import net.manub.embeddedkafka.{Consumers, EmbeddedKafka}
+import net.manub.embeddedkafka.{Consumers, EmbeddedKafka, EmbeddedKafkaConfig}
 import org.scalatest.concurrent.Eventually
 import org.scalatest.time.SpanSugar
 import org.scalatest.{BeforeAndAfterAll, Matchers, OptionValues, WordSpec}
@@ -32,9 +32,12 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
   with SpanSugar
   with BeforeAndAfterAll
   with EmbeddedKafka
-//  with MetricInspection
   with Reconfigure
   with OptionValues with Consumers {
+
+  // increase zk connection timeout to avoid failing tests in "slow" environments
+  implicit val defaultConfig: EmbeddedKafkaConfig =
+    EmbeddedKafkaConfig.apply(customBrokerProperties = EmbeddedKafkaConfig.apply().customBrokerProperties + ("zookeeper.connection.timeout.ms" -> "20000"))
 
   "The Kafka Clients Tracing Instrumentation" should {
     "create a Producer Span when publish a message" in {

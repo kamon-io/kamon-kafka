@@ -23,7 +23,7 @@ import com.typesafe.config.{Config, ConfigFactory}
 import kamon.Kamon
 import kamon.context.BinaryPropagation.{ByteStreamReader, ByteStreamWriter}
 import kamon.context.{BinaryPropagation, Context}
-import kamon.kafka.{ContextSpanBinaryEncoder, Kafka}
+import kamon.kafka.Kafka
 import kamon.kafka.client.instrumentation.advisor.Advisors.PollMethodAdvisor
 import kamon.trace.{Span, Trace}
 import kanela.agent.api.instrumentation.InstrumentationBuilder
@@ -57,7 +57,9 @@ object RecordProcessor {
         records.records(partition).forEach(record => {
           val header = Option(record.headers.lastHeader("kamon-context"))
 
-          val currentContext = header.map(h => ContextSpanBinaryEncoder.decode(h.value())).getOrElse(Context.Empty)
+          val currentContext = header.map{ h =>
+            Kamon.defaultBinaryPropagation().read(ByteStreamReader.of(h.value()))
+          }.getOrElse(Context.Empty)
 
           val span = consumerSpansForTopic.getOrElseUpdate(topic, {
             val spanBuilder = Kamon.spanBuilder("poll")
@@ -79,7 +81,10 @@ object RecordProcessor {
             spanBuilder.start()
           })
 
-          record.headers.add("kamon-context",ContextSpanBinaryEncoder.encode(currentContext, span))
+          val out = new ByteArrayOutputStream();
+          Kamon.defaultBinaryPropagation().write(currentContext.withKey(Span.Key, span), ByteStreamWriter.of(out));
+
+          record.headers.add("kamon-context", out.toByteArray)
         })
       })
 
