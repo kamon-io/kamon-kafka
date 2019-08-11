@@ -20,13 +20,13 @@ Supported releases and dependencies are shown below.
 
 | kamon-kafka  | status | jdk  | scala            
 |:------:|:------:|:----:|------------------
-|  1.0.0 | stable | 1.8+ | 2.11, 2.12  
+|  2.0.0 | shapshot | 1.8+ | 2.11, 2.12  
 
 To get started with SBT, simply add the following to your `build.sbt`
 file:
 
 ```scala
-libraryDependencies += "io.kamon" %% "kamon-kafka" % "1.0.0"
+libraryDependencies += "io.kamon" %% "kamon-kafka" % "2.0.0-SNAPSHOT"
 ```
 
 
