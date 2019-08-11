@@ -1,4 +1,5 @@
 language: scala
+sbt_args: -Dpackaging.type=jar
 script:
   - sbt test
 scala:
