@@ -1,7 +1,7 @@
 language: scala
 sbt_args: -Djava.io.tmpdir=$TRAVIS_BUILD_DIR/tmp -Dpackaging.type=jar
 script:
-  - sbt test
+  - sbt +test
 scala:
    - 2.12.8
 jdk:
