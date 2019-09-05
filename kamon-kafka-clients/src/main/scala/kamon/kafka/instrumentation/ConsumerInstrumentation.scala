@@ -17,15 +17,13 @@
 package kamon.kafka.instrumentation
 
 import java.io.ByteArrayOutputStream
-import java.nio.ByteBuffer
 
-import com.typesafe.config.{Config, ConfigFactory}
 import kamon.Kamon
 import kamon.context.BinaryPropagation.{ByteStreamReader, ByteStreamWriter}
-import kamon.context.{BinaryPropagation, Context}
+import kamon.context.Context
 import kamon.kafka.Kafka
 import kamon.kafka.client.instrumentation.advisor.Advisors.PollMethodAdvisor
-import kamon.trace.{Span, Trace}
+import kamon.trace.Span
 import kanela.agent.api.instrumentation.InstrumentationBuilder
 import org.apache.kafka.clients.consumer.ConsumerRecords
 
@@ -41,6 +39,9 @@ class ConsumerInstrumentation extends InstrumentationBuilder {
 }
 
 object RecordProcessor {
+
+  import scala.collection.JavaConverters._
+
   /**
     * Inject Context into Records
     */
@@ -51,10 +52,10 @@ object RecordProcessor {
 
       val consumerSpansForTopic = new mutable.LinkedHashMap[String, Span]()
 
-      records.partitions().forEach(partition => {
+      records.partitions().asScala.foreach(partition => {
         val topic = partition.topic
 
-        records.records(partition).forEach(record => {
+        records.records(partition).asScala.foreach(record => {
           val header = Option(record.headers.lastHeader("kamon-context"))
 
           val currentContext = header.map{ h =>
