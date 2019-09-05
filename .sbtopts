@@ -1,0 +1,4 @@
+-J-XX:MaxMetaspaceSize=2048m
+-J-Xmx4096m
+-J-XX:+CMSClassUnloadingEnabled
+-J-XX:+UseConcMarkSweepGC
