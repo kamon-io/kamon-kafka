@@ -16,10 +16,7 @@
 
 package kamon.kafka.instrumentation
 
-import java.io.ByteArrayOutputStream
-
 import kamon.Kamon
-import kamon.context.BinaryPropagation.{ByteStreamReader, ByteStreamWriter}
 import kamon.context.Context
 import kamon.kafka.Kafka
 import kamon.kafka.client.instrumentation.advisor.Advisors.PollMethodAdvisor
@@ -59,7 +56,7 @@ object RecordProcessor {
           val header = Option(record.headers.lastHeader("kamon-context"))
 
           val currentContext = header.map{ h =>
-            Kamon.defaultBinaryPropagation().read(ByteStreamReader.of(h.value()))
+            ContextSerializationHelper.fromByteArray(h.value())
           }.getOrElse(Context.Empty)
 
           val span = consumerSpansForTopic.getOrElseUpdate(topic, {
@@ -82,10 +79,8 @@ object RecordProcessor {
             spanBuilder.start()
           })
 
-          val out = new ByteArrayOutputStream();
-          Kamon.defaultBinaryPropagation().write(currentContext.withEntry(Span.Key, span), ByteStreamWriter.of(out));
-
-          record.headers.add("kamon-context", out.toByteArray)
+          val serializedCtx = ContextSerializationHelper.toByteArray(currentContext.withEntry(Span.Key, span))
+          record.headers.add("kamon-context", serializedCtx)
         })
       })
 

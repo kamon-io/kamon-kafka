@@ -16,6 +16,7 @@ package kamon.kafka.stream.instrumentation.advisor;
 
 import kamon.Kamon;
 import kamon.context.Context;
+import kamon.kafka.instrumentation.ContextSerializationHelper;
 import kamon.kafka.streams.instrumentation.StampedRecordWithSpan;
 import kamon.trace.Span;
 import kanela.agent.libs.net.bytebuddy.asm.Advice;
@@ -32,8 +33,7 @@ public class Advisors {
 
         public static Context getContext(Header h) {
             if(h != null) {
-                // ugly, ugly, ugly ... :(
-                return Kamon.defaultBinaryPropagation().read(kamon.context.BinaryPropagation$ByteStreamReader$.MODULE$.of(h.value()));
+                return ContextSerializationHelper.fromByteArray(h.value());
             } else {
                 return Context.Empty();
             }
