@@ -74,7 +74,8 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
         eventually(timeout(10 seconds)) {
           val span = reporter.nextSpan().value
-          span.operationName shouldBe "kafka.produce"
+          span.operationName shouldBe "publish"
+          span.tags.get(plain("component")) shouldBe "kafka.publisher"
           span.tags.get(plain("span.kind")) shouldBe "producer"
           span.tags.get(plain("kafka.key")) shouldBe "hello"
           span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
@@ -83,7 +84,8 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
         eventually(timeout(10 seconds)) {
           val span = reporter.nextSpan().value
-          span.operationName shouldBe "stream"
+//          span.operationName shouldBe "stream"
+          span.tags.get(plain("component")) shouldBe "kafka.stream"
           span.tags.get(plain("span.kind")) shouldBe "consumer"
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
           span.tags.get(plain("kafka.topic")) shouldBe "in"
@@ -124,6 +126,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
           }
           reportedSpans should have size 7
           reportedSpans.map(_.trace.id.string).distinct should have size 1
+          reportedSpans.foreach(s => println(s"Span: op=${s.operationName}, comp=${s.tags.get(plain("component"))}"))
         }
       }
     }

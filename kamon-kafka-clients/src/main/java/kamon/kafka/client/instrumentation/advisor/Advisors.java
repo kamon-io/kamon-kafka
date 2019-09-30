@@ -53,9 +53,10 @@ public class Advisors {
             val partition = record.partition() == null ? "unknown-partition" : record.partition().toString();
             val value = record.key() == null ? "unknown-key" : record.key().toString();
 
-            val span = Kamon.producerSpanBuilder("kafka.produce", "kafkaPublisher")
+            val span = Kamon.producerSpanBuilder("publish", "kafka.publisher")
                     .asChildOf(currentContext.get(Span.Key()))
                     .tag("span.kind", "producer")
+                    .tag("component", "kafka.publisher") // set component also as a regular tag, not only as metricTag as with Kamon.producerSpanBuilder
                     .tag("kafka.key", value)
                     .tag("kafka.partition", partition)
                     .tag("kafka.topic", topic)

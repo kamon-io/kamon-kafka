@@ -61,6 +61,7 @@ object RecordProcessor {
 
           val span = consumerSpansForTopic.getOrElseUpdate(topic, {
             val spanBuilder = Kamon.spanBuilder("poll")
+              .tag("component", "kafka.consumer")
               .tag("span.kind", "consumer")
               .tag("kafka.partition", partition.partition)
               .tag("kafka.topic", topic)

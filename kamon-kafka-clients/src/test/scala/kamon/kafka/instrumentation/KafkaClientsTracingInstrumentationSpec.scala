@@ -47,7 +47,8 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
 
         eventually(timeout(10 seconds)) {
           val span = reporter.nextSpan().value
-          span.operationName shouldBe "kafka.produce"
+          span.operationName shouldBe "publish"
+          span.tags.get(plain("component")) shouldBe "kafka.publisher"
           span.tags.get(plain("span.kind")) shouldBe "producer"
           span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
           span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
@@ -65,7 +66,8 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
 
         eventually(timeout(10 seconds)) {
           val span = reporter.nextSpan().value
-          span.operationName shouldBe "kafka.produce"
+          span.operationName shouldBe "publish"
+          span.tags.get(plain("component")) shouldBe "kafka.publisher"
           span.tags.get(plain("span.kind")) shouldBe "producer"
           span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
           span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
@@ -93,8 +95,9 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
 
         eventually(timeout(10 seconds)) {
           val span = reporter.nextSpan().value
-          span.operationName shouldBe "kafka.produce"
+          span.operationName shouldBe "publish"
           span.tags.get(plain("span.kind")) shouldBe "producer"
+          span.tags.get(plain("component")) shouldBe "kafka.publisher"
           span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
           span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
           span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
@@ -104,6 +107,7 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           val span = reporter.nextSpan().value
           span.operationName shouldBe "poll"
           span.tags.get(plain("span.kind")) shouldBe "consumer"
+          span.tags.get(plain("component")) shouldBe "kafka.consumer"
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
           span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
           span.tags.get(plain("trace.related.trace_id")) should not be null

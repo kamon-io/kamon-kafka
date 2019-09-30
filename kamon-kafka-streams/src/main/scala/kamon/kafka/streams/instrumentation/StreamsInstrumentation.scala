@@ -18,44 +18,82 @@ package kamon.kafka.streams.instrumentation
 
 import kamon.Kamon
 import kamon.context.Context
-import kamon.kafka.stream.instrumentation.advisor.Advisors.NextRecordMethodAdvisor
+import kamon.kafka.instrumentation.ContextSerializationHelper
 import kamon.trace.Span
 import kanela.agent.api.instrumentation.InstrumentationBuilder
 import kanela.agent.libs.net.bytebuddy.asm.Advice
+import org.apache.kafka.common.header.Header
 import org.apache.kafka.streams.processor.internals.{ProcessorNode, StampedRecord, StreamTask}
 
 
 class StreamsInstrumentation extends InstrumentationBuilder {
 
   /**
-    * Instruments org.apache.kafka.streams.processor.internals.StreamTask::process
-    */
-  onType("org.apache.kafka.streams.processor.internals.StreamTask")
-    .advise(method("process"), classOf[ProcessMethodAdvisor])
-
-  /**
     * Instruments org.apache.kafka.streams.processor.internals.ProcessorNode::process
+    *
+    * This will start and finish the stream topology node span
     */
   onType("org.apache.kafka.streams.processor.internals.ProcessorNode")
     .advise(method("process"), classOf[ProcessorNodeProcessMethodAdvisor])
 
   /**
-    * Instruments org.apache.kafka.streams.processor.internals.PartitionGroup::nextRecord
+    * Instruments org.apache.kafka.streams.processor.internals.StreamTask::updateProcessorContext
+    *
+    * UpdateProcessContextAdvisor: this will start the stream span
+    * ProcessMethodAdvisor: this will finish the stream span
+    *
     */
-  onType("org.apache.kafka.streams.processor.internals.PartitionGroup")
-    .advise(method("nextRecord").and(withReturnTypes(classOf[org.apache.kafka.streams.processor.internals.StampedRecord])), classOf[NextRecordMethodAdvisor])
+  onType("org.apache.kafka.streams.processor.internals.StreamTask")
+    .advise(method("updateProcessorContext"), classOf[UpdateProcessContextAdvisor])
+    .advise(method("process"), classOf[ProcessMethodAdvisor])
+
 }
 
+object ContextHelper {
+  def     getContext(h: Header): Context = {
+    Option(h) match {
+      case Some(x) =>
+        ContextSerializationHelper.fromByteArray(x.value());
+      case _ =>
+        Context.Empty
+    }
+  }
+}
+
+class UpdateProcessContextAdvisor
+object UpdateProcessContextAdvisor {
+
+  @Advice.OnMethodExit(onThrowable = classOf[Throwable], suppress = classOf[Throwable])
+  def onExit(
+              @Advice.Argument(0) record: StampedRecord,
+              @Advice.Argument(1) currNode: ProcessorNode[_, _],
+              @Advice.This streamTask:StreamTask,
+              @Advice.Thrown throwable: Throwable):Unit = {
+
+    val header = record.headers().lastHeader("kamon-context");
+    val currentContext = ContextHelper.getContext(header);
+    val span = Kamon.spanBuilder(streamTask.applicationId())
+      .asChildOf(currentContext.get(Span.Key))
+      .tag("span.kind", "consumer")
+      .tag("component", "kafka.stream")
+      .tag("kafka.partition", record.partition())
+      .tag("kafka.topic", record.topic())
+      .tag("kafka.offset", record.offset())
+      .start
+
+    Kamon.storeContext(Context.of(Span.Key, span));
+  }
+}
 
 class ProcessorNodeProcessMethodAdvisor
 object ProcessorNodeProcessMethodAdvisor {
   @Advice.OnMethodEnter
   def onEnter(@Advice.This node: ProcessorNode[_,_]): Context = {
     val currentSpan = Kamon.currentSpan()
-    val span = Kamon.spanBuilder("node")
+    val span = Kamon.spanBuilder(node.name())
       .asChildOf(currentSpan)
       .tag("span.kind", "processor")
-      .tag("kafka.stream.node", node.name())
+      .tag("component", "kafka.stream.node")
       .start()
     Context.of(Span.Key, span)
   }
@@ -70,13 +108,9 @@ object ProcessorNodeProcessMethodAdvisor {
 
 class ProcessMethodAdvisor
 object ProcessMethodAdvisor {
-  @Advice.OnMethodEnter
-  def onEnter(@Advice.This streamTask:StreamTask): Context = {
-    Kamon.currentContext() // todo: Why should this be required since it seems to contain only Span.Empty?
-  }
 
   @Advice.OnMethodExit(onThrowable = classOf[Throwable], suppress = classOf[Throwable])
-  def onExit(@Advice.Origin r: Any, @Advice.This streamTask:StreamTask, @Advice.Return recordProcessed: Boolean, @Advice.Enter ctx: Context, @Advice.Thrown throwable: Throwable):Unit = {
+  def onExit(@Advice.Origin r: Any, @Advice.This streamTask:StreamTask, @Advice.Return recordProcessed: Boolean, @Advice.Thrown throwable: Throwable):Unit = {
 
     val currentSpan = Kamon.currentSpan()
     if(recordProcessed) {
@@ -88,6 +122,4 @@ object ProcessMethodAdvisor {
     }
   }
 }
-
-class StampedRecordWithSpan(record: StampedRecord, val span: Span) extends StampedRecord(record.value, record.timestamp)
 
