@@ -26,8 +26,7 @@ import net.manub.embeddedkafka.ConsumerExtensions._
 import net.manub.embeddedkafka.EmbeddedKafkaConfig
 import net.manub.embeddedkafka.streams.EmbeddedKafkaStreamsAllInOne
 import org.apache.kafka.common.serialization.{Serde, Serdes}
-import org.apache.kafka.streams.scala
-import org.apache.kafka.streams.StreamsBuilder
+import org.apache.kafka.streams.{StreamsBuilder, scala}
 import org.apache.kafka.streams.kstream.{Consumed, KStream, Produced}
 import org.scalatest.concurrent.Eventually
 import org.scalatest.time.SpanSugar
@@ -94,25 +93,14 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       }
     }
 
-    "ensure continuation of traces from 'regular' publishers and streams with 'followStrategy' " in {
-      import scala.ImplicitConversions._
-      import org.apache.kafka.streams.scala.Serdes.String
+    "ensure continuation of traces from 'regular' publishers and streams with 'followStrategy' and assert stream and node spans are poresent" in {
 
-      // Explicitly enable follow-strategy
+      // Explicitly enable follow-strategy ...
       Kamon.reconfigure(ConfigFactory.parseString("kamon.kafka.follow-strategy = true").withFallback(Kamon.config()))
+      // ... and ensure that it is active
       kamon.kafka.Kafka.followStrategy shouldBe true
 
-      val streamBuilder = new scala.StreamsBuilder
-      streamBuilder.stream[String,String](inTopic)
-        .filter((k,v) => true)
-        .mapValues((k,v) => v)
-// todo: add detailed aggregate logging, including traceId of the previous update to the aggregate object
-//        .groupByKey
-//        .aggregate(""){ (k,v, agg) =>agg + v}
-//        .toStream
-        .to(outTopic)
-
-      runStreams(Seq(inTopic, outTopic), streamBuilder.build()) {
+      runStreams(Seq(inTopic, outTopic), buildExampleTopology) {
         publishToKafka(inTopic, "hello", "world!")
 
         withConsumer[String, String, Unit] { consumer =>
@@ -130,6 +118,57 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         }
       }
     }
+
+    "Disable node span creation in config and assert on stream span present" in {
+
+      // Explicitly enable follow-strategy ....
+      val config =
+        """
+          |kamon.kafka.follow-strategy = true
+          |kamon.kafka.streams.trace-nodes = false
+        """.stripMargin
+
+      Kamon.reconfigure(ConfigFactory.parseString(config).withFallback(Kamon.config()))
+
+      // ... and ensure that it is active
+      kamon.kafka.Kafka.followStrategy shouldBe true
+      kamon.kafka.streams.Streams.traceNodes shouldBe false
+
+      runStreams(Seq(inTopic, outTopic), buildExampleTopology) {
+        publishToKafka(inTopic, "hello", "world!")
+
+        withConsumer[String, String, Unit] { consumer =>
+          val consumedMessages: Stream[(String, String)] =  consumer.consumeLazily(outTopic)
+          consumedMessages.take(1) should be(Seq("hello" -> "world!"))
+        }
+
+        eventually(timeout(5 seconds)) {
+          reporter.nextSpan().foreach{ s =>
+            reportedSpans = s :: reportedSpans
+          }
+          reportedSpans should have size 5
+          reportedSpans.map(_.trace.id.string).distinct should have size 1
+          reportedSpans.foreach(s => println(s"Span: op=${s.operationName}, comp=${s.tags.get(plain("component"))}"))
+        }
+      }
+    }
+  }
+
+  private def buildExampleTopology = {
+    import scala.ImplicitConversions._
+    import org.apache.kafka.streams.scala.Serdes.String
+
+    val streamBuilder = new scala.StreamsBuilder
+    streamBuilder.stream[String, String](inTopic)
+      .filter((k, v) => true)
+      .mapValues((k, v) => v)
+      // todo: add detailed aggregate logging, including traceId of the previous update to the aggregate object
+      //        .groupByKey
+      //        .aggregate(""){ (k,v, agg) =>agg + v}
+      //        .toStream
+      .to(outTopic)
+
+    streamBuilder.build
   }
 
   var reportedSpans: List[Span.Finished] = Nil

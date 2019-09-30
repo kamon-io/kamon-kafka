@@ -19,6 +19,7 @@ package kamon.kafka.streams.instrumentation
 import kamon.Kamon
 import kamon.context.Context
 import kamon.kafka.instrumentation.ContextSerializationHelper
+import kamon.kafka.streams.Streams
 import kamon.trace.Span
 import kanela.agent.api.instrumentation.InstrumentationBuilder
 import kanela.agent.libs.net.bytebuddy.asm.Advice
@@ -89,20 +90,25 @@ class ProcessorNodeProcessMethodAdvisor
 object ProcessorNodeProcessMethodAdvisor {
   @Advice.OnMethodEnter
   def onEnter(@Advice.This node: ProcessorNode[_,_]): Context = {
-    val currentSpan = Kamon.currentSpan()
-    val span = Kamon.spanBuilder(node.name())
-      .asChildOf(currentSpan)
-      .tag("span.kind", "processor")
-      .tag("component", "kafka.stream.node")
-      .start()
-    Context.of(Span.Key, span)
+    if(Streams.traceNodes) {
+      val currentSpan = Kamon.currentSpan()
+      val span = Kamon.spanBuilder(node.name())
+        .asChildOf(currentSpan)
+        .tag("span.kind", "processor")
+        .tag("component", "kafka.stream.node")
+        .start()
+      Context.of(Span.Key, span)
+    } else
+      Context.Empty
   }
 
   @Advice.OnMethodExit(onThrowable = classOf[Throwable], suppress = classOf[Throwable])
   def onExit(@Advice.This node: ProcessorNode[_,_], @Advice.Enter ctx: Context, @Advice.Thrown throwable: Throwable):Unit = {
-    val currentSpan = ctx.get(Span.Key)
-    if(throwable != null) currentSpan.fail(throwable.getMessage)
-    currentSpan.finish()
+    if(Streams.traceNodes) {
+      val currentSpan = ctx.get(Span.Key)
+      if (throwable != null) currentSpan.fail(throwable.getMessage)
+      currentSpan.finish()
+    }
   }
 }
 
