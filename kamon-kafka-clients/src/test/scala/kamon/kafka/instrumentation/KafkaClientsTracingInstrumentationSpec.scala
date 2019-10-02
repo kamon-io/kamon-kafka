@@ -19,6 +19,7 @@ import com.typesafe.config.ConfigFactory
 import kamon.Kamon
 import kamon.module.Module.Registration
 import kamon.tag.Lookups._
+import kamon.tag.Tag
 import kamon.testkit.{Reconfigure, TestSpanReporter}
 import kamon.trace.Span
 import net.manub.embeddedkafka.{Consumers, EmbeddedKafka, EmbeddedKafkaConfig}
@@ -81,6 +82,26 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
           span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
           reporter.nextSpan() shouldBe None
+        }
+      }
+    }
+
+    "create multiple Producer/Consumer Spans when publish/consume multiple messages" in {
+
+      var reportedSpans: List[Span.Finished] = Nil
+
+      withRunningKafka {
+
+        publishStringMessageToKafka("kamon.topic", "m1")
+        publishStringMessageToKafka("kamon.topic", "m2")
+        consumeFirstStringMessageFrom("kamon.topic") shouldBe "m1"
+        consumeFirstStringMessageFrom("kamon.topic") shouldBe "m2"
+
+        eventually(timeout(10 seconds)) {
+          reporter.nextSpan().foreach { s =>
+            reportedSpans = s :: reportedSpans
+          }
+          reportedSpans should have size 4
         }
       }
     }

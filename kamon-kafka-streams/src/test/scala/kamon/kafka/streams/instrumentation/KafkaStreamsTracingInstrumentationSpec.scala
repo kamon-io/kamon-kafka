@@ -15,10 +15,13 @@
 
 package kamon.kafka.streams.instrumentation
 
+import java.io.{BufferedWriter, File, FileWriter}
+
 import com.typesafe.config.ConfigFactory
 import kamon.module.Module.Registration
 import kamon.Kamon
 import kamon.tag.Lookups._
+import kamon.tag.Tag
 import kamon.testkit.{Reconfigure, TestSpanReporter}
 import kamon.trace.Span
 import net.manub.embeddedkafka.Codecs._
@@ -66,7 +69,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         publishToKafka(inTopic, "foo", "bar")
 
         withConsumer[String, String, Unit] { consumer =>
-          val consumedMessages: Stream[(String, String)] =  consumer.consumeLazily(outTopic)
+          val consumedMessages: Stream[(String, String)] = consumer.consumeLazily(outTopic)
           consumedMessages.take(2) should be(Seq("hello" -> "world!", "kamon" -> "rocks!"))
           consumedMessages.drop(2).head should be("foo" -> "bar")
         }
@@ -83,7 +86,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
         eventually(timeout(10 seconds)) {
           val span = reporter.nextSpan().value
-//          span.operationName shouldBe "stream"
+          //          span.operationName shouldBe "stream"
           span.tags.get(plain("component")) shouldBe "kafka.stream"
           span.tags.get(plain("span.kind")) shouldBe "consumer"
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
@@ -104,12 +107,12 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         publishToKafka(inTopic, "hello", "world!")
 
         withConsumer[String, String, Unit] { consumer =>
-          val consumedMessages: Stream[(String, String)] =  consumer.consumeLazily(outTopic)
+          val consumedMessages: Stream[(String, String)] = consumer.consumeLazily(outTopic)
           consumedMessages.take(1) should be(Seq("hello" -> "world!"))
         }
 
         eventually(timeout(5 seconds)) {
-          reporter.nextSpan().foreach{ s =>
+          reporter.nextSpan().foreach { s =>
             reportedSpans = s :: reportedSpans
           }
           reportedSpans should have size 7
@@ -138,12 +141,12 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         publishToKafka(inTopic, "hello", "world!")
 
         withConsumer[String, String, Unit] { consumer =>
-          val consumedMessages: Stream[(String, String)] =  consumer.consumeLazily(outTopic)
+          val consumedMessages: Stream[(String, String)] = consumer.consumeLazily(outTopic)
           consumedMessages.take(1) should be(Seq("hello" -> "world!"))
         }
 
         eventually(timeout(5 seconds)) {
-          reporter.nextSpan().foreach{ s =>
+          reporter.nextSpan().foreach { s =>
             reportedSpans = s :: reportedSpans
           }
           reportedSpans should have size 5
@@ -152,6 +155,81 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         }
       }
     }
+
+    "Multiple messages in a flow - NO node tracing" in {
+
+      // Explicitly enable follow-strategy ....
+      val config =
+        """
+          |kamon.kafka.follow-strategy = true
+          |kamon.kafka.streams.trace-nodes = false
+        """.stripMargin
+
+      Kamon.reconfigure(ConfigFactory.parseString(config).withFallback(Kamon.config()))
+
+      // ... and ensure that it is active
+      kamon.kafka.Kafka.followStrategy shouldBe true
+      kamon.kafka.streams.Streams.traceNodes shouldBe false
+
+      runStreams(Seq(inTopic, outTopic), buildExampleTopology) {
+        publishToKafka(inTopic, "k1", "v1")
+        publishToKafka(inTopic, "k2", "v2")
+        publishToKafka(inTopic, "k3", "v3")
+
+        withConsumer[String, String, Unit] { consumer =>
+          val consumedMessages: Stream[(String, String)] = consumer.consumeLazily(outTopic)
+          consumedMessages.take(3) should be(Seq("k1" -> "v1", "k2" -> "v2", "k3" -> "v3"))
+        }
+
+        eventually(timeout(5 seconds)) {
+          reporter.nextSpan().foreach { s =>
+            reportedSpans = s :: reportedSpans
+          }
+          reportedSpans should have size 11
+          reportedSpans.map(_.trace.id.string).distinct should have size 3 // for each message initially send
+          reportedSpans.foreach(s => println(s"Span: op=${s.operationName}, comp=${s.tags.get(plain("component"))}"))
+          DotFileGenerator.dumpToDotFile("stream.dot", reportedSpans)
+        }
+      }
+    }
+
+    "Multiple messages in a flow - WITH node tracing" in {
+
+      // Explicitly enable follow-strategy ....
+      val config =
+        """
+          |kamon.kafka.follow-strategy = true
+          |kamon.kafka.streams.trace-nodes = true
+        """.stripMargin
+
+      Kamon.reconfigure(ConfigFactory.parseString(config).withFallback(Kamon.config()))
+
+      // ... and ensure that it is active
+      kamon.kafka.Kafka.followStrategy shouldBe true
+      kamon.kafka.streams.Streams.traceNodes shouldBe true
+
+      runStreams(Seq(inTopic, outTopic), buildExampleTopology) {
+        publishToKafka(inTopic, "k1", "v1")
+        publishToKafka(inTopic, "k2", "v2")
+        publishToKafka(inTopic, "k3", "v3")
+
+        withConsumer[String, String, Unit] { consumer =>
+          val consumedMessages: Stream[(String, String)] = consumer.consumeLazily(outTopic)
+          consumedMessages.take(3) should be(Seq("k1" -> "v1", "k2" -> "v2", "k3" -> "v3"))
+        }
+
+        eventually(timeout(5 seconds)) {
+          reporter.nextSpan().foreach { s =>
+            reportedSpans = s :: reportedSpans
+          }
+          reportedSpans should have size 17
+          reportedSpans.map(_.trace.id.string).distinct should have size 3 // for each message initially send
+          reportedSpans.foreach(s => println(s"Span: op=${s.operationName}, comp=${s.tags.get(plain("component"))}"))
+          DotFileGenerator.dumpToDotFile("stream.dot", reportedSpans)
+        }
+      }
+    }
+
   }
 
   private def buildExampleTopology = {
