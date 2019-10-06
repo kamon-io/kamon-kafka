@@ -17,14 +17,14 @@ val kamonCore           = "io.kamon"            %% "kamon-core"                 
 val kamonTestkit        = "io.kamon"            %% "kamon-testkit"                    % "2.0.0"
 val scalaExtension      = "io.kamon"            %% "kamon-instrumentation-common"     % "2.0.0"
 
-val kafkaClient         = "org.apache.kafka"    % "kafka-clients"	                    % "0.11.0.0"
-val kafkaStreams        = "org.apache.kafka"    % "kafka-streams"	                    % "2.0.0"
-val kafkaStreamsScala   = "org.apache.kafka"    %% "kafka-streams-scala"	            % "2.0.0"
+val kafkaClient         = "org.apache.kafka"    % "kafka-clients"	                    % "2.3.0"
+val kafkaStreams        = "org.apache.kafka"    % "kafka-streams"	                    % "2.3.0"
+val kafkaStreamsScala   = "org.apache.kafka"    %% "kafka-streams-scala"	            % "2.3.0"
 
-val kafkaTest           = "net.manub"           %% "scalatest-embedded-kafka"         % "2.0.0"
-val kafkaStreamTest     = "net.manub"           %% "scalatest-embedded-kafka-streams" % "2.0.0"
+val kafkaTest           = "io.github.embeddedkafka" %% "embedded-kafka"               % "2.3.0"
+val kafkaStreamTest     = "io.github.embeddedkafka" %% "embedded-kafka-streams"       % "2.3.0"
 
-val lombok              = "org.projectlombok"   % "lombok"                            % "1.18.0"
+val lombok              = "org.projectlombok"   % "lombok"                            % "1.18.0" //1.18.8?
 
 
 lazy val root = (project in file("."))

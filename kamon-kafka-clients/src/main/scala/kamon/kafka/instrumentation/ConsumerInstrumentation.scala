@@ -16,6 +16,8 @@
 
 package kamon.kafka.instrumentation
 
+import java.time.Duration
+
 import kamon.Kamon
 import kamon.context.Context
 import kamon.kafka.Kafka
@@ -29,10 +31,18 @@ import scala.collection.mutable
 class ConsumerInstrumentation extends InstrumentationBuilder {
 
   /**
-    * Instruments org.apache.kafka.clients.consumer.KafkaConsumer::poll(long)
+    * Instruments org.apache.kafka.clients.consumer.KafkaConsumer::poll(Long)
+    * Kafka version < 2.3
     */
   onType("org.apache.kafka.clients.consumer.KafkaConsumer")
     .advise(method("poll").and(withArgument(0, classOf[Long])), classOf[PollMethodAdvisor])
+
+  /**
+    * Instruments org.apache.kafka.clients.consumer.KafkaConsumer::poll(Duration)
+    * Kafka version >= 2.3
+    */
+  onType("org.apache.kafka.clients.consumer.KafkaConsumer")
+    .advise(method("poll").and(withArgument(0, classOf[Duration])), classOf[PollMethodAdvisor])
 }
 
 object RecordProcessor {

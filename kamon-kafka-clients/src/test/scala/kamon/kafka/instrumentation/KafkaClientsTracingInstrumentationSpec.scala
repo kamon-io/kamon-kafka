@@ -19,11 +19,10 @@ import com.typesafe.config.ConfigFactory
 import kamon.Kamon
 import kamon.module.Module.Registration
 import kamon.tag.Lookups._
-import kamon.tag.Tag
 import kamon.testkit.{Reconfigure, TestSpanReporter}
 import kamon.trace.Span
 import net.manub.embeddedkafka.{Consumers, EmbeddedKafka, EmbeddedKafkaConfig}
-import org.scalatest.concurrent.Eventually
+import org.scalatest.concurrent.{Eventually, PatienceConfiguration}
 import org.scalatest.time.SpanSugar
 import org.scalatest.{BeforeAndAfterAll, Matchers, OptionValues, WordSpec}
 
@@ -59,15 +58,16 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
       }
     }
 
-    "create a Producer/Consumer Span when publish/consume a message" in {
+    "create a Producer/Consumer Span when publish/consume a message" in new TestScope {
+
       withRunningKafka {
 
         publishStringMessageToKafka("kamon.topic", "Hello world!!!")
         consumeFirstStringMessageFrom("kamon.topic") shouldBe "Hello world!!!"
 
-        eventually(timeout(10 seconds)) {
-          val span = reporter.nextSpan().value
-          span.operationName shouldBe "publish"
+        expectNumSpans(2, timeout(20 seconds))
+
+        assertReportedSpan(_.operationName == "publish") { span =>
           span.tags.get(plain("component")) shouldBe "kafka.publisher"
           span.tags.get(plain("span.kind")) shouldBe "producer"
           span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
@@ -75,20 +75,16 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
         }
 
-        eventually(timeout(10 seconds)) {
-          val span = reporter.nextSpan().value
+        assertReportedSpan(_.operationName == "poll") { span =>
           span.operationName shouldBe "poll"
           span.tags.get(plain("span.kind")) shouldBe "consumer"
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
           span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
-          reporter.nextSpan() shouldBe None
         }
       }
     }
 
-    "create multiple Producer/Consumer Spans when publish/consume multiple messages" in {
-
-      var reportedSpans: List[Span.Finished] = Nil
+    "create multiple Producer/Consumer Spans when publish/consume multiple messages" in new TestScope {
 
       withRunningKafka {
 
@@ -97,16 +93,15 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         consumeFirstStringMessageFrom("kamon.topic") shouldBe "m1"
         consumeFirstStringMessageFrom("kamon.topic") shouldBe "m2"
 
-        eventually(timeout(10 seconds)) {
-          reporter.nextSpan().foreach { s =>
-            reportedSpans = s :: reportedSpans
-          }
-          reportedSpans should have size 4
-        }
+        expectNumSpans(4,timeout(10 seconds))
+        val traceIds = reportedSpans.map(_.trace.id.string).distinct
+        traceIds should have size 2
+        assertReportedSpans(_.trace.id.string == traceIds.head){ spans => spans should have size 2}
+        assertReportedSpans(_.trace.id.string == traceIds(1)){ spans => spans should have size 2}
       }
     }
 
-    "create a Producer/Consumer Span when publish/consume a message without follow-strategy" in {
+    "create a Producer/Consumer Span when publish/consume a message without follow-strategy" in new TestScope {
       withRunningKafka {
 
         Kamon.reconfigure(ConfigFactory.parseString("kamon.kafka.follow-strategy = false").withFallback(Kamon.config()))
@@ -114,9 +109,9 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         publishStringMessageToKafka("kamon.topic", "Hello world!!!")
         consumeFirstStringMessageFrom("kamon.topic") shouldBe "Hello world!!!"
 
-        eventually(timeout(10 seconds)) {
-          val span = reporter.nextSpan().value
-          span.operationName shouldBe "publish"
+        expectNumSpans(2, timeout(10 seconds))
+
+        assertReportedSpan(_.operationName == "publish") { span =>
           span.tags.get(plain("span.kind")) shouldBe "producer"
           span.tags.get(plain("component")) shouldBe "kafka.publisher"
           span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
@@ -124,9 +119,7 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
         }
 
-        eventually(timeout(10 seconds)) {
-          val span = reporter.nextSpan().value
-          span.operationName shouldBe "poll"
+        assertReportedSpan(_.operationName == "poll") { span =>
           span.tags.get(plain("span.kind")) shouldBe "consumer"
           span.tags.get(plain("component")) shouldBe "kafka.consumer"
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
@@ -135,6 +128,44 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           span.tags.get(plain("trace.related.span_id")) should not be null
           reporter.nextSpan() shouldBe None
         }
+      }
+    }
+  }
+
+  abstract class TestScope {
+    private var _reportedSpans: List[Span.Finished] = Nil
+    def reportedSpans = _reportedSpans
+
+    def expectNumSpans(numOfExpectedSpans: Int, timeout: PatienceConfiguration.Timeout): Unit = {
+      eventually(timeout) {
+        collectReportedSpans()
+        _reportedSpans should have size numOfExpectedSpans
+      }
+      reporter.nextSpan() shouldBe empty
+    }
+
+    def collectReportedSpans() =
+      reporter.nextSpan().foreach { s =>
+        _reportedSpans = s :: _reportedSpans
+      }
+
+    def assertReportedSpan(p: Span.Finished => Boolean)(f: Span.Finished => Unit): Unit = {
+      _reportedSpans.filter(p) match {
+        case Nil =>
+          fail("expected span not found!")
+        case x :: Nil =>
+          f(x)
+        case x :: y =>
+          fail(s"More than one span found! spans:${x :: y}")
+      }
+    }
+
+    def assertReportedSpans(p: Span.Finished => Boolean)(f: List[Span.Finished] => Unit): Unit = {
+      _reportedSpans.filter(p) match {
+        case Nil =>
+          fail("expected span not found!")
+        case x =>
+          f(x)
       }
     }
   }
