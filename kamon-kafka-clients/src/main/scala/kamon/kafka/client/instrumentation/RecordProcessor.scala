@@ -14,10 +14,7 @@ object RecordProcessor {
 
   import scala.collection.JavaConverters._
 
-  /**
-    * Inject Context into Records
-    */
-  def process[V, K](startTime: Instant, records: ConsumerRecords[K, V]): ConsumerRecords[K, V] = {
+  def process[V, K](startTime: Instant, clientId: String, groupId: String, records: ConsumerRecords[K, V]): ConsumerRecords[K, V] = {
     if (!records.isEmpty) {
 
       val consumerSpansForTopic = new mutable.LinkedHashMap[String, Span]()
@@ -34,9 +31,11 @@ object RecordProcessor {
 
           val span = consumerSpansForTopic.getOrElseUpdate(topic, {
             val spanBuilder = Kamon.consumerSpanBuilder("poll", "kafka.consumer")
+              .tagMetrics("kafka.topic", topic)
+              .tagMetrics("kafka.clientId", clientId)
+              .tagMetrics("kafka.groupId", groupId)
               .tag("component", "kafka.consumer")
               .tag("kafka.partition", partition.partition)
-              .tag("kafka.topic", topic)
               .tag("kafka.offset", record.offset)
 
             // Key could be optional ... see tests

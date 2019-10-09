@@ -32,16 +32,18 @@ public class SendMethodAdvisor {
     @Advice.OnMethodEnter(suppress = Throwable.class)
     public static void onEnter(@Advice.Argument(value = 0, readOnly = false) ProducerRecord record,
                                @Advice.Argument(value = 1, readOnly = false) Callback callback,
-                               @Advice.Local("scope") Storage.Scope scope) {
+                               @Advice.Local("scope") Storage.Scope scope,
+                               @Advice.FieldValue("clientId") String clientId) {
         val currentContext = Kamon.currentContext();
         val topic = record.topic() == null ? "kafka" : record.topic();
         val partition = record.partition() == null ? "unknown-partition" : record.partition().toString();
         val value = record.key() == null ? "unknown-key" : record.key().toString();
 
         val span = Kamon.producerSpanBuilder("send", "kafka.producer")
+                .tagMetrics("kafka.topic", topic)
+                .tagMetrics("kafka.clientId", clientId)
                 .tag("kafka.key", value)
                 .tag("kafka.partition", partition)
-                .tag("kafka.topic", topic)
                 .start();
 
         val ctx = currentContext.withEntry(Span.Key(), span);

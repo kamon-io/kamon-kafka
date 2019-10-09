@@ -53,9 +53,9 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         assertReportedSpan(_.operationName == "send") { span =>
           span.metricTags.get(plain("component")) shouldBe "kafka.producer"
           span.metricTags.get(plain("span.kind")) shouldBe "producer"
+          span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"
           span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
           span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
-          span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
         }
 
         assertNoSpansReported()
@@ -74,16 +74,18 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         assertReportedSpan(_.operationName == "send") { span =>
           span.metricTags.get(plain("component")) shouldBe "kafka.producer"
           span.metricTags.get(plain("span.kind")) shouldBe "producer"
+          span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"
           span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
           span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
-          span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
         }
 
         assertReportedSpan(_.operationName == "poll") { span =>
           span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
           span.metricTags.get(plain("span.kind")) shouldBe "consumer"
+          span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"
+          span.metricTags.get(plain("kafka.clientId")) should not be empty
+          span.metricTags.get(plain("kafka.groupId")) should not be empty
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
-          span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
         }
       }
     }
@@ -119,17 +121,20 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         assertReportedSpan(_.operationName == "send") { span =>
           span.metricTags.get(plain("span.kind")) shouldBe "producer"
           span.metricTags.get(plain("component")) shouldBe "kafka.producer"
+          span.metricTags.get(plain("kafka.clientId")) should not be empty
+          span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"
           span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
           span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
-          span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
           sendingSpan = Some(span)
         }
 
         assertReportedSpan(_.operationName == "poll") { span =>
           span.metricTags.get(plain("span.kind")) shouldBe "consumer"
           span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
+          span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"
+          span.metricTags.get(plain("kafka.clientId")) should not be empty
+          span.metricTags.get(plain("kafka.groupId")) should not be empty
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
-          span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
           span.links should have size 1
           val link = span.links.head
           link.trace.id shouldBe sendingSpan.get.trace.id
