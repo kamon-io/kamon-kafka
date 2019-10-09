@@ -18,7 +18,7 @@ package kamon.kafka.streams.instrumentation
 
 import kamon.Kamon
 import kamon.context.Context
-import kamon.kafka.instrumentation.ContextSerializationHelper
+import kamon.kafka.client.instrumentation.ContextSerializationHelper
 import kamon.kafka.streams.Streams
 import kamon.trace.Span
 import kanela.agent.api.instrumentation.InstrumentationBuilder

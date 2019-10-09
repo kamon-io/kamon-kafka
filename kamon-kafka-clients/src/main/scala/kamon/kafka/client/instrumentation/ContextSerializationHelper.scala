@@ -1,4 +1,4 @@
-package kamon.kafka.instrumentation
+package kamon.kafka.client.instrumentation
 
 import java.io.ByteArrayOutputStream
 

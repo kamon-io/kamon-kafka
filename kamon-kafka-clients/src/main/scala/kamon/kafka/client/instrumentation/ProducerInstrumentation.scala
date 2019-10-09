@@ -14,10 +14,10 @@
  * =========================================================================================
  */
 
-package kamon.kafka.instrumentation
+package kamon.kafka.client.instrumentation
 
 import kamon.context.Storage.Scope
-import kamon.kafka.client.instrumentation.advisor.Advisors.SendMethodAdvisor
+import kamon.kafka.client.instrumentation.advisor.SendMethodAdvisor
 import kamon.trace.Span
 import kanela.agent.api.instrumentation.InstrumentationBuilder
 import org.apache.kafka.clients.producer.{Callback, RecordMetadata}
