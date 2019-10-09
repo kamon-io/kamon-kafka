@@ -28,7 +28,7 @@ object RecordProcessor {
         records.records(partition).asScala.foreach(record => {
           val header = Option(record.headers.lastHeader("kamon-context"))
 
-          val currentContext = header.map{ h =>
+          val sendingContext = header.map { h =>
             ContextSerializationHelper.fromByteArray(h.value())
           }.getOrElse(Context.Empty)
 
@@ -42,13 +42,11 @@ object RecordProcessor {
             // Key could be optional ... see tests
             Option(record.key()).foreach(k => spanBuilder.tag("kafka.key", record.key().toString))
 
-            if(Kafka.followStrategy) spanBuilder.asChildOf(currentContext.get(Span.Key))
-            else {
-              val currentSpan = currentContext.get(Span.Key)
-              spanBuilder
-                .tag("trace.related.trace_id", currentSpan.id.string)
-                .tag("trace.related.span_id", currentSpan.trace.id.string)
-            }
+            if (Kafka.followStrategy)
+              spanBuilder.asChildOf(sendingContext.get(Span.Key))
+            else
+              spanBuilder.link(sendingContext.get(Span.Key), Span.Link.Kind.FollowsFrom)
+
             spanBuilder.start(startTime)
           })
         })

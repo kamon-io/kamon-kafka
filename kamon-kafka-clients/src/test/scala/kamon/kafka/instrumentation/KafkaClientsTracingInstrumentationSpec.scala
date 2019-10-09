@@ -19,6 +19,7 @@ import com.typesafe.config.ConfigFactory
 import kamon.Kamon
 import kamon.tag.Lookups._
 import kamon.testkit.Reconfigure
+import kamon.trace.Span
 import net.manub.embeddedkafka.{Consumers, EmbeddedKafka, EmbeddedKafkaConfig}
 import org.scalatest.concurrent.Eventually
 import org.scalatest.time.SpanSugar
@@ -104,7 +105,7 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
       }
     }
 
-    "create a Producer/Consumer Span when publish/consume a message without follow-strategy" in new SpanReportingTestScope(reporter) {
+    "create a Producer/Consumer Span when publish/consume a message without follow-strategy and expect a linked span" in new SpanReportingTestScope(reporter) {
       withRunningKafka {
 
         Kamon.reconfigure(ConfigFactory.parseString("kamon.kafka.follow-strategy = false").withFallback(Kamon.config()))
@@ -114,12 +115,14 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
 
         awaitNumReportedSpans(2)
 
+        var sendingSpan: Option[Span.Finished] = None
         assertReportedSpan(_.operationName == "send") { span =>
           span.metricTags.get(plain("span.kind")) shouldBe "producer"
           span.metricTags.get(plain("component")) shouldBe "kafka.producer"
           span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
           span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
           span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
+          sendingSpan = Some(span)
         }
 
         assertReportedSpan(_.operationName == "poll") { span =>
@@ -127,8 +130,10 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
           span.tags.get(plain("kafka.topic")) shouldBe "kamon.topic"
-          span.tags.get(plain("trace.related.trace_id")) should not be null
-          span.tags.get(plain("trace.related.span_id")) should not be null
+          span.links should have size 1
+          val link = span.links.head
+          link.trace.id shouldBe sendingSpan.get.trace.id
+          link.spanId shouldBe sendingSpan.get.id
         }
 
         assertNoSpansReported()
