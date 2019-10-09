@@ -51,9 +51,6 @@ object RecordProcessor {
             }
             spanBuilder.start(startTime)
           })
-
-          val serializedCtx = ContextSerializationHelper.toByteArray(currentContext.withEntry(Span.Key, span))
-          record.headers.add("kamon-context", serializedCtx)
         })
       })
 
