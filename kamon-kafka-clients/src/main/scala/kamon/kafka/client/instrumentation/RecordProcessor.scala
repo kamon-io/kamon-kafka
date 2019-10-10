@@ -4,7 +4,7 @@ import java.time.Instant
 
 import kamon.Kamon
 import kamon.context.Context
-import kamon.kafka.Kafka
+import kamon.kafka.client.Client
 import kamon.trace.Span
 import org.apache.kafka.clients.consumer.ConsumerRecords
 
@@ -41,12 +41,16 @@ object RecordProcessor {
             // Key could be optional ... see tests
             Option(record.key()).foreach(k => spanBuilder.tag("kafka.key", record.key().toString))
 
-            if (Kafka.followStrategy)
+            if (Client.followStrategy)
               spanBuilder.asChildOf(sendingContext.get(Span.Key))
             else
               spanBuilder.link(sendingContext.get(Span.Key), Span.Link.Kind.FollowsFrom)
 
-            spanBuilder.start(startTime)
+            if(Client.useDelayedSpans)
+              // Kafka's timestamp is expressed in millis, convert to nanos => this might spoil precision here ...
+              spanBuilder.delay(Kamon.clock().toInstant(record.timestamp() * 100 * 100)).start(startTime)
+            else
+              spanBuilder.start(startTime)
           })
         })
       })

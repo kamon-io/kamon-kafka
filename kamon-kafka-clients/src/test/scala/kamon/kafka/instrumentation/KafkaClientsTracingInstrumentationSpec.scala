@@ -17,6 +17,7 @@ package kamon.kafka.instrumentation
 
 import com.typesafe.config.ConfigFactory
 import kamon.Kamon
+import kamon.kafka.client.Client
 import kamon.tag.Lookups._
 import kamon.testkit.Reconfigure
 import kamon.trace.Span
@@ -110,7 +111,7 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
     "create a Producer/Consumer Span when publish/consume a message without follow-strategy and expect a linked span" in new SpanReportingTestScope(reporter) {
       withRunningKafka {
 
-        Kamon.reconfigure(ConfigFactory.parseString("kamon.kafka.follow-strategy = false").withFallback(Kamon.config()))
+        Kamon.reconfigure(ConfigFactory.parseString("kamon.kafka.client.follow-strategy = false").withFallback(Kamon.config()))
 
         publishStringMessageToKafka("kamon.topic", "Hello world!!!")
         consumeFirstStringMessageFrom("kamon.topic") shouldBe "Hello world!!!"
@@ -129,6 +130,49 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         }
 
         assertReportedSpan(_.operationName == "poll") { span =>
+          span.metricTags.get(plain("span.kind")) shouldBe "consumer"
+          span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
+          span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"
+          span.metricTags.get(plain("kafka.clientId")) should not be empty
+          span.metricTags.get(plain("kafka.groupId")) should not be empty
+          span.tags.get(plainLong("kafka.partition")) shouldBe 0L
+          span.links should have size 1
+          val link = span.links.head
+          link.trace.id shouldBe sendingSpan.get.trace.id
+          link.spanId shouldBe sendingSpan.get.id
+        }
+
+        assertNoSpansReported()
+      }
+    }
+
+    "create a Producer/Consumer Span when publish/consume a message with delayed spans" in new SpanReportingTestScope(reporter) {
+      withRunningKafka {
+
+        Kamon.reconfigure(ConfigFactory.parseString("""
+            |kamon.kafka.client.use-delayed-spans = true
+            |kamon.kafka.client.follow-strategy = false
+        """.stripMargin).withFallback(Kamon.config()))
+        Client.useDelayedSpans shouldBe true
+
+        publishStringMessageToKafka("kamon.topic", "Hello world!!!")
+        consumeFirstStringMessageFrom("kamon.topic") shouldBe "Hello world!!!"
+
+        awaitNumReportedSpans(2)
+
+        var sendingSpan: Option[Span.Finished] = None
+        assertReportedSpan(_.operationName == "send") { span =>
+          span.metricTags.get(plain("span.kind")) shouldBe "producer"
+          span.metricTags.get(plain("component")) shouldBe "kafka.producer"
+          span.metricTags.get(plain("kafka.clientId")) should not be empty
+          span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"
+          span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
+          span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
+          sendingSpan = Some(span)
+        }
+
+        assertReportedSpan(_.operationName == "poll") { span =>
+          span.wasDelayed shouldBe true
           span.metricTags.get(plain("span.kind")) shouldBe "consumer"
           span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
           span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"

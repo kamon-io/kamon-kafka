@@ -17,6 +17,8 @@ package kamon.kafka.streams.instrumentation
 
 import com.typesafe.config.ConfigFactory
 import kamon.Kamon
+import kamon.kafka.client
+import kamon.kafka.client.Client
 import kamon.kafka.instrumentation.{SpanReportingTestScope, TestSpanReporting}
 import kamon.tag.Lookups._
 import kamon.testkit.Reconfigure
@@ -59,9 +61,9 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
     "ensure continuation of traces from 'regular' publishers and streams with 'followStrategy' and assert stream and node spans are poresent" in new SpanReportingTestScope(reporter) with ConfigSupport {
 
       // Explicitly enable follow-strategy ...
-      reconfigureKamon("kamon.kafka.follow-strategy = true")
+      reconfigureKamon("kamon.kafka.client.follow-strategy = true")
       // ... and ensure that it is active
-      kamon.kafka.Kafka.followStrategy shouldBe true
+      Client.followStrategy shouldBe true
 
       runStreams(Seq(inTopic, outTopic), buildExampleTopology) {
         publishToKafka(inTopic, "hello", "world!")
@@ -82,11 +84,11 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
       // Explicitly set desired configuration ...
       reconfigureKamon("""
-          |kamon.kafka.follow-strategy = true
+          |kamon.kafka.client.follow-strategy = true
           |kamon.kafka.streams.trace-nodes = false
         """.stripMargin)
       // ... and ensure that it is active
-      kamon.kafka.Kafka.followStrategy shouldBe true
+      client.Client.followStrategy shouldBe true
       kamon.kafka.streams.Streams.traceNodes shouldBe false
 
       runStreams(Seq(inTopic, outTopic), buildExampleTopology) {
@@ -108,11 +110,11 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
       // Explicitly enable follow-strategy and DISABLE node tracing ....
       reconfigureKamon("""
-          |kamon.kafka.follow-strategy = true
+          |kamon.kafka.client.follow-strategy = true
           |kamon.kafka.streams.trace-nodes = false
         """.stripMargin)
       // ... and ensure that it is active
-      kamon.kafka.Kafka.followStrategy shouldBe true
+      client.Client.followStrategy shouldBe true
       kamon.kafka.streams.Streams.traceNodes shouldBe false
 
       runStreams(Seq(inTopic, outTopic), buildExampleTopology) {
@@ -137,12 +139,12 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
       // Explicitly enable follow-strategy and node tracing ....
       reconfigureKamon("""
-          |kamon.kafka.follow-strategy = true
+          |kamon.kafka.client.follow-strategy = true
           |kamon.kafka.streams.trace-nodes = true
         """.stripMargin)
 
       // ... and ensure that it is active
-      kamon.kafka.Kafka.followStrategy shouldBe true
+      client.Client.followStrategy shouldBe true
       kamon.kafka.streams.Streams.traceNodes shouldBe true
 
       runStreams(Seq(inTopic, outTopic), buildExampleTopology) {
