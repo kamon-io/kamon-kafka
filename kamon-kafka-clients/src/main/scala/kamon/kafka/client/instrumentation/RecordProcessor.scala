@@ -16,47 +16,50 @@ object RecordProcessor {
 
   def process[V, K](startTime: Instant, clientId: String, groupId: String, records: ConsumerRecords[K, V]): ConsumerRecords[K, V] = {
     if (!records.isEmpty) {
+      val spanBuilder = Kamon.consumerSpanBuilder("poll", "kafka.consumer")
+        .tagMetrics("kafka.clientId", clientId)
+        .tagMetrics("kafka.groupId", groupId)
+        .tag("numRecords", records.count())
+        .tag("kafka.partitions", records.partitions().asScala.map(_.partition()).mkString(","))
+        .tag("kafka.topics", records.partitions().asScala.map(_.topic()).toSet.mkString(","))
+      val pollSpan = spanBuilder.start(startTime)
+      pollSpan.finish()
 
-      val consumerSpansForTopic = new mutable.LinkedHashMap[String, Span]()
+      records.iterator().asScala.foreach{ record =>
+        val header = Option(record.headers.lastHeader("kamon-context"))
 
-      records.partitions().asScala.foreach(partition => {
-        val topic = partition.topic
+        val sendingContext = header.map { h =>
+          ContextSerializationHelper.fromByteArray(h.value())
+        }.getOrElse(Context.Empty)
 
-        records.records(partition).asScala.foreach(record => {
-          val header = Option(record.headers.lastHeader("kamon-context"))
+          val spanBuilder = Kamon.consumerSpanBuilder("consumed-record", "kafka.consumer")
+            .tagMetrics("kafka.topic", record.topic())
+            .tagMetrics("kafka.clientId", clientId)
+            .tagMetrics("kafka.groupId", groupId)
+            .tag("kafka.partition", record.partition())
+            .tag("kafka.offset", record.offset)
 
-          val sendingContext = header.map { h =>
-            ContextSerializationHelper.fromByteArray(h.value())
-          }.getOrElse(Context.Empty)
+          // Key could be optional ... see tests
+          Option(record.key()).foreach(k => spanBuilder.tag("kafka.key", record.key().toString))
 
-          val span = consumerSpansForTopic.getOrElseUpdate(topic, {
-            val spanBuilder = Kamon.consumerSpanBuilder("poll", "kafka.consumer")
-              .tagMetrics("kafka.topic", topic)
-              .tagMetrics("kafka.clientId", clientId)
-              .tagMetrics("kafka.groupId", groupId)
-              .tag("component", "kafka.consumer")
-              .tag("kafka.partition", partition.partition)
-              .tag("kafka.offset", record.offset)
+          if (Client.followStrategy)
+            spanBuilder.asChildOf(sendingContext.get(Span.Key))
+          else
+            spanBuilder.link(sendingContext.get(Span.Key), Span.Link.Kind.FollowsFrom)
 
-            // Key could be optional ... see tests
-            Option(record.key()).foreach(k => spanBuilder.tag("kafka.key", record.key().toString))
+          // Link new span also to polling span
+          spanBuilder.link(pollSpan, Span.Link.Kind.FollowsFrom)
 
-            if (Client.followStrategy)
-              spanBuilder.asChildOf(sendingContext.get(Span.Key))
-            else
-              spanBuilder.link(sendingContext.get(Span.Key), Span.Link.Kind.FollowsFrom)
+        val span = if(Client.useDelayedSpans)
+            // Kafka's timestamp is expressed in millis, convert to nanos => this might spoil precision here ...
+            spanBuilder.delay(Kamon.clock().toInstant(record.timestamp() * 100 * 100)).start(startTime)
+          else
+            spanBuilder.start(startTime)
 
-            if(Client.useDelayedSpans)
-              // Kafka's timestamp is expressed in millis, convert to nanos => this might spoil precision here ...
-              spanBuilder.delay(Kamon.clock().toInstant(record.timestamp() * 100 * 100)).start(startTime)
-            else
-              spanBuilder.start(startTime)
-          })
-        })
-      })
+          span.finish
+        }
+      }
 
-      consumerSpansForTopic.values.foreach(_.finish)
-    }
     records
   }
 }

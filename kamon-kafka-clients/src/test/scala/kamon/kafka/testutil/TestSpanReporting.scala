@@ -12,14 +12,12 @@
  * and limitations under the License.
  * =========================================================================================
  */
-
-package kamon.kafka.instrumentation
+package kamon.kafka.testutil
 
 import kamon.Kamon
 import kamon.module.Module.Registration
 import kamon.testkit.{Reconfigure, TestSpanReporter}
 import org.scalatest.BeforeAndAfterAll
-
 
 trait TestSpanReporting extends Reconfigure { _: BeforeAndAfterAll =>
   var registration: Registration = _

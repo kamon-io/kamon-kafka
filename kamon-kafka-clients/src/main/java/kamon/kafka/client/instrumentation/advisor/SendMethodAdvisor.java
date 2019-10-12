@@ -12,7 +12,6 @@
  * and limitations under the License.
  * =========================================================================================
  */
-
 package kamon.kafka.client.instrumentation.advisor;
 
 import kamon.Kamon;

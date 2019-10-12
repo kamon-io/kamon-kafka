@@ -12,8 +12,7 @@
  * and limitations under the License.
  * =========================================================================================
  */
-
-package kamon.kafka.instrumentation
+package kamon.kafka.testutil
 
 import kamon.testkit.TestSpanReporter
 import kamon.trace.Span
@@ -32,8 +31,10 @@ abstract class SpanReportingTestScope(_reporter: TestSpanReporter.BufferingSpanR
   def awaitNumReportedSpans(numOfExpectedSpans: Int)(implicit timeout: PatienceConfiguration.Timeout): Unit = {
     eventually(timeout) {
       collectReportedSpans()
+//      println(s"_reportedSpans.size=${_reportedSpans.size}")
       _reportedSpans should have size numOfExpectedSpans
     }
+    Thread.sleep(1000)
     if(_reporter.nextSpan().isDefined) {
       fail(s"Expected only $numOfExpectedSpans spans to be reported, but got more!")
     }
@@ -44,7 +45,7 @@ abstract class SpanReportingTestScope(_reporter: TestSpanReporter.BufferingSpanR
       _reportedSpans = s :: _reportedSpans
     }
 
-  def assertReportedSpan(p: Span.Finished => Boolean)(f: Span.Finished => Unit): Unit = {
+  def assertReportedSpan[T](p: Span.Finished => Boolean)(f: Span.Finished => T): T = {
     _reportedSpans.filter(p) match {
       case Nil =>
         fail("expected span not found!")

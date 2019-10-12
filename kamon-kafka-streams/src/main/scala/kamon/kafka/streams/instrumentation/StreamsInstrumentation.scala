@@ -73,12 +73,10 @@ object UpdateProcessContextAdvisor {
 
     val header = record.headers().lastHeader("kamon-context");
     val currentContext = ContextHelper.getContext(header);
-    val span = Kamon.spanBuilder(streamTask.applicationId())
+    val span = Kamon.consumerSpanBuilder(streamTask.applicationId(), "kafka.stream")
       .asChildOf(currentContext.get(Span.Key))
-      .tag("span.kind", "consumer")
-      .tag("component", "kafka.stream")
+      .tagMetrics("kafka.topic", record.topic())
       .tag("kafka.partition", record.partition())
-      .tag("kafka.topic", record.topic())
       .tag("kafka.offset", record.offset())
       .start
 
@@ -94,8 +92,8 @@ object ProcessorNodeProcessMethodAdvisor {
       val currentSpan = Kamon.currentSpan()
       val span = Kamon.spanBuilder(node.name())
         .asChildOf(currentSpan)
-        .tag("span.kind", "processor")
-        .tag("component", "kafka.stream.node")
+        .tagMetrics("span.kind", "processor")
+        .tagMetrics("component", "kafka.stream.node")
         .start()
       Context.of(Span.Key, span)
     } else
