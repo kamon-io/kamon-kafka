@@ -65,7 +65,9 @@ object DotFileGenerator {
     import java.io.{BufferedReader, InputStreamReader}
     class StreamGobbler(val inputStream: InputStream, val consumer: String => Unit) extends Runnable {
       override def run(): Unit = {
-        new BufferedReader(new InputStreamReader(inputStream)).lines.forEach((t: String) => println(t))
+        new BufferedReader(new InputStreamReader(inputStream)).lines.forEach(new Consumer[String] {
+          override def accept(t: String): Unit = println(t)
+        })
       }
     }
     import java.util.concurrent.Executors
