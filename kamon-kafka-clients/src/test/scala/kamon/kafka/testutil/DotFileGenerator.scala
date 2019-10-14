@@ -63,9 +63,9 @@ object DotFileGenerator {
 
   private def executeShellCommand(cmd: String*): Int = {
     import java.io.{BufferedReader, InputStreamReader}
-    class StreamGobbler(val inputStream: InputStream, val consumer: Consumer[String]) extends Runnable {
+    class StreamGobbler(val inputStream: InputStream, val consumer: String => ()) extends Runnable {
       override def run(): Unit = {
-        new BufferedReader(new InputStreamReader(inputStream)).lines.forEach(consumer)
+        new BufferedReader(new InputStreamReader(inputStream)).lines.forEach((t: String) => println(t))
       }
     }
     import java.util.concurrent.Executors
@@ -73,7 +73,7 @@ object DotFileGenerator {
     builder.command(cmd :_ *)
     builder.directory(new File("."))
     val process = builder.start
-    val streamGobbler = new StreamGobbler(process.getInputStream, println _)
+    val streamGobbler = new StreamGobbler(process.getInputStream, println)
     Executors.newSingleThreadExecutor.submit(streamGobbler)
     process.waitFor
   }
