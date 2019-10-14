@@ -38,6 +38,8 @@ object RecordProcessor {
             .tagMetrics("kafka.groupId", groupId)
             .tag("kafka.partition", record.partition())
             .tag("kafka.offset", record.offset)
+            .tag("kafka.timestamp", record.timestamp())
+            .tag("kafka.timestampType", record.timestampType.name)
 
           // Key could be optional ... see tests
           Option(record.key()).foreach(k => spanBuilder.tag("kafka.key", record.key().toString))
@@ -52,7 +54,7 @@ object RecordProcessor {
 
         val span = if(Client.useDelayedSpans)
             // Kafka's timestamp is expressed in millis, convert to nanos => this might spoil precision here ...
-            spanBuilder.delay(Kamon.clock().toInstant(record.timestamp() * 100 * 100)).start(startTime)
+            spanBuilder.delay(Kamon.clock().toInstant(record.timestamp() * 1000 * 1000)).start(startTime)
           else
             spanBuilder.start(startTime)
 
