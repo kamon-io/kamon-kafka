@@ -63,7 +63,7 @@ object DotFileGenerator {
 
   private def executeShellCommand(cmd: String*): Int = {
     import java.io.{BufferedReader, InputStreamReader}
-    class StreamGobbler(val inputStream: InputStream, val consumer: String => ()) extends Runnable {
+    class StreamGobbler(val inputStream: InputStream, val consumer: String => Unit) extends Runnable {
       override def run(): Unit = {
         new BufferedReader(new InputStreamReader(inputStream)).lines.forEach((t: String) => println(t))
       }
