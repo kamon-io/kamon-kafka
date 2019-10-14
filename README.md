@@ -8,6 +8,7 @@ Kafka Integration   ![Build Status](https://travis-ci.org/kamon-io/kamon-kafka.s
 The <b>kamon-kafka</b> module requires you to start your application using the Kanela Agent. Kamon will warn you
 at startup if you failed to do so.
 
+
 The bytecode instrumentation provided by the `kamon-kafka` module hooks into the kafka clients to automatically
 gather Metrics and start and finish Spans for requests that are issued within a trace. This translates into you having metrics about how
 the requests you are doing are behaving.
