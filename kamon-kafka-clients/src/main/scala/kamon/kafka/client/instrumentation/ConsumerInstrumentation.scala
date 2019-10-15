@@ -13,7 +13,6 @@
  * and limitations under the License.
  * =========================================================================================
  */
-
 package kamon.kafka.client.instrumentation
 
 import java.time.Duration
@@ -36,5 +35,13 @@ class ConsumerInstrumentation extends InstrumentationBuilder {
     */
   onType("org.apache.kafka.clients.consumer.KafkaConsumer")
     .advise(method("poll").and(withArgument(0, classOf[Duration])), classOf[PollMethodAdvisor])
+
+  /**
+    * Instruments org.apache.kafka.clients.consumer.ConsumerRecord with the HasSpan mixin in order
+    * to make the span available as parent for down stream operations
+    */
+  onSubTypesOf("org.apache.kafka.clients.consumer.ConsumerRecord")
+    .mixin(classOf[HasSpan.Mixin])
+
 }
 

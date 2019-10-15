@@ -12,7 +12,6 @@
  * and limitations under the License.
  * =========================================================================================
  */
-
 package kamon.kafka.instrumentation
 
 import com.typesafe.config.ConfigFactory
@@ -45,18 +44,46 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
 
   implicit val patienceConfigTimeout = timeout(20 seconds)
 
+  val testTopicName = "kamon.topic"
+
   "The Kafka Clients Tracing Instrumentation" should {
+
+    "provide the consumed-record span to clients" in new SpanReportingTestScope(reporter) {
+      withRunningKafka {
+
+        import net.manub.embeddedkafka.Codecs.stringDeserializer
+        import kamon.kafka.client.instrumentation.SpanExtractionSupport._
+
+        publishStringMessageToKafka(testTopicName, "Hello world!!!!!")
+        val consumedRecord = consumeFirstRawRecord(testTopicName)
+        val spanFromRecord = consumedRecord.maybeSpan
+        spanFromRecord shouldBe defined
+
+        Kamon.spanBuilder("my-business-processor")
+            .asChildOf(spanFromRecord.get)
+            .start
+            .finish
+
+        awaitNumReportedSpans(4) // send + poll + consumed-record
+        assertReportedSpan(_.operationName == "consumed-record") { span =>
+          span.id shouldBe spanFromRecord.get.id
+        }
+
+        DotFileGenerator.dumpToDotFile("client-hasSpan", reportedSpans)
+      }
+    }
+
     "create a Producer Span when publish a message" in new SpanReportingTestScope(reporter) {
       withRunningKafka {
 
-        publishStringMessageToKafka("kamon.topic", "Hello world!!!!!")
+        publishStringMessageToKafka(testTopicName, "Hello world!!!!!")
 
         awaitNumReportedSpans(1)
 
         assertReportedSpan(_.operationName == "send") { span =>
           span.metricTags.get(plain("component")) shouldBe "kafka.producer"
           span.metricTags.get(plain("span.kind")) shouldBe "producer"
-          span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"
+          span.metricTags.get(plain("kafka.topic")) shouldBe testTopicName
           span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
           span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
         }
@@ -71,8 +98,8 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
 
         import net.manub.embeddedkafka.Codecs.stringDeserializer
 
-        publishStringMessageToKafka("kamon.topic", "Hello world!!!")
-        val consumedRecord = consumeFirstRawRecord[String, String]("kamon.topic")
+        publishStringMessageToKafka(testTopicName, "Hello world!!!")
+        val consumedRecord = consumeFirstRawRecord[String, String](testTopicName)
         consumedRecord.value() shouldBe "Hello world!!!"
 
         awaitNumReportedSpans(3)
@@ -80,7 +107,7 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         assertReportedSpan(_.operationName == "send") { span =>
           span.metricTags.get(plain("component")) shouldBe "kafka.producer"
           span.metricTags.get(plain("span.kind")) shouldBe "producer"
-          span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"
+          span.metricTags.get(plain("kafka.topic")) shouldBe testTopicName
           span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
           span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
         }
@@ -97,7 +124,7 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         assertReportedSpan(_.operationName == "consumed-record") { span =>
           span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
           span.metricTags.get(plain("span.kind")) shouldBe "consumer"
-          span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"
+          span.metricTags.get(plain("kafka.topic")) shouldBe testTopicName
           span.metricTags.get(plain("kafka.clientId")) should not be empty
           span.metricTags.get(plain("kafka.groupId")) should not be empty
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
@@ -111,12 +138,12 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
 
       withRunningKafka {
 
-        publishStringMessageToKafka("kamon.topic", "m1")
-        publishStringMessageToKafka("kamon.topic", "m2")
+        publishStringMessageToKafka(testTopicName, "m1")
+        publishStringMessageToKafka(testTopicName, "m2")
 
         implicit val stringDeser = new StringDeserializer
 
-        consumeNumberMessagesFrom[String]("kamon.topic",2) should contain allOf ("m1", "m2")
+        consumeNumberMessagesFrom[String](testTopicName,2) should contain allOf ("m1", "m2")
         awaitNumReportedSpans(5)
         // one poll operation (batch due to autoCommit=true)
         assertReportedSpans(s => s.operationName == "poll"){ spans =>
@@ -134,11 +161,11 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
 
       withRunningKafka {
 
-        publishStringMessageToKafka("kamon.topic", "m1")
-        publishStringMessageToKafka("kamon.topic", "m2")
+        publishStringMessageToKafka(testTopicName, "m1")
+        publishStringMessageToKafka(testTopicName, "m2")
 
-        consumeFirstStringMessageFrom("kamon.topic", autoCommit = false) shouldBe "m1"
-        consumeFirstStringMessageFrom("kamon.topic", autoCommit = false) shouldBe "m2"
+        consumeFirstStringMessageFrom(testTopicName, autoCommit = false) shouldBe "m1"
+        consumeFirstStringMessageFrom(testTopicName, autoCommit = false) shouldBe "m2"
         awaitNumReportedSpans(7)
         // two poll operations
         assertReportedSpans(s => s.operationName == "poll"){ spans =>
@@ -157,8 +184,8 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
 
         Kamon.reconfigure(ConfigFactory.parseString("kamon.kafka.client.follow-strategy = false").withFallback(Kamon.config()))
 
-        publishStringMessageToKafka("kamon.topic", "Hello world!!!")
-        consumeFirstStringMessageFrom("kamon.topic", autoCommit = true) shouldBe "Hello world!!!"
+        publishStringMessageToKafka(testTopicName, "Hello world!!!")
+        consumeFirstStringMessageFrom(testTopicName, autoCommit = true) shouldBe "Hello world!!!"
 
         awaitNumReportedSpans(3)
 
@@ -167,7 +194,7 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           span.metricTags.get(plain("span.kind")) shouldBe "producer"
           span.metricTags.get(plain("component")) shouldBe "kafka.producer"
           span.metricTags.get(plain("kafka.clientId")) should not be empty
-          span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"
+          span.metricTags.get(plain("kafka.topic")) shouldBe testTopicName
           span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
           span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
           sendingSpan = Some(span)
@@ -181,7 +208,7 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         assertReportedSpan(_.operationName == "consumed-record") { span =>
           span.metricTags.get(plain("span.kind")) shouldBe "consumer"
           span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
-          span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"
+          span.metricTags.get(plain("kafka.topic")) shouldBe testTopicName
           span.metricTags.get(plain("kafka.clientId")) should not be empty
           span.metricTags.get(plain("kafka.groupId")) should not be empty
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
@@ -205,8 +232,8 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         """.stripMargin).withFallback(Kamon.config()))
         Client.useDelayedSpans shouldBe true
 
-        publishStringMessageToKafka("kamon.topic", "Hello world!!!")
-        consumeFirstStringMessageFrom("kamon.topic") shouldBe "Hello world!!!"
+        publishStringMessageToKafka(testTopicName, "Hello world!!!")
+        consumeFirstStringMessageFrom(testTopicName) shouldBe "Hello world!!!"
 
         awaitNumReportedSpans(3)
 
@@ -215,7 +242,7 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           span.metricTags.get(plain("span.kind")) shouldBe "producer"
           span.metricTags.get(plain("component")) shouldBe "kafka.producer"
           span.metricTags.get(plain("kafka.clientId")) should not be empty
-          span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"
+          span.metricTags.get(plain("kafka.topic")) shouldBe testTopicName
           span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
           span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
           sendingSpan = Some(span)
@@ -230,7 +257,7 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           span.wasDelayed shouldBe true
           span.metricTags.get(plain("span.kind")) shouldBe "consumer"
           span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
-          span.metricTags.get(plain("kafka.topic")) shouldBe "kamon.topic"
+          span.metricTags.get(plain("kafka.topic")) shouldBe testTopicName
           span.metricTags.get(plain("kafka.clientId")) should not be empty
           span.metricTags.get(plain("kafka.groupId")) should not be empty
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
