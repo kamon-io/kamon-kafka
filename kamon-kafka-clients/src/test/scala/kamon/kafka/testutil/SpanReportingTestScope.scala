@@ -16,10 +16,13 @@ package kamon.kafka.testutil
 
 import kamon.testkit.TestSpanReporter
 import kamon.trace.Span
+import net.manub.embeddedkafka.Consumers
+import org.apache.kafka.clients.consumer.ConsumerRecord
+import org.apache.kafka.common.serialization.Deserializer
 import org.scalatest.Matchers
 import org.scalatest.concurrent.{Eventually, PatienceConfiguration}
 
-abstract class SpanReportingTestScope(_reporter: TestSpanReporter.BufferingSpanReporter) extends Eventually with Matchers {
+abstract class SpanReportingTestScope(_reporter: TestSpanReporter.BufferingSpanReporter) extends Eventually with Matchers with Consumers {
   private var _reportedSpans: List[Span.Finished] = Nil
   _reporter.clear()
 
@@ -31,7 +34,6 @@ abstract class SpanReportingTestScope(_reporter: TestSpanReporter.BufferingSpanR
   def awaitNumReportedSpans(numOfExpectedSpans: Int)(implicit timeout: PatienceConfiguration.Timeout): Unit = {
     eventually(timeout) {
       collectReportedSpans()
-//      println(s"_reportedSpans.size=${_reportedSpans.size}")
       _reportedSpans should have size numOfExpectedSpans
     }
     Thread.sleep(1000)
@@ -64,4 +66,10 @@ abstract class SpanReportingTestScope(_reporter: TestSpanReporter.BufferingSpanR
         f(x)
     }
   }
+
+  import net.manub.embeddedkafka.ConsumerExtensions._
+  def consumeFirstRawRecord[K,V](topicName: String)(implicit dk: Deserializer[K], dv: Deserializer[V]): ConsumerRecord[K,V] = {
+    newConsumer[K,V].consumeLazily(topicName){ cr: ConsumerRecord[K, V] => cr}.take(1).toList.head
+  }
+
 }

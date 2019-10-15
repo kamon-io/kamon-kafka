@@ -69,8 +69,11 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
 
       withRunningKafka {
 
+        import net.manub.embeddedkafka.Codecs.stringDeserializer
+
         publishStringMessageToKafka("kamon.topic", "Hello world!!!")
-        consumeFirstStringMessageFrom("kamon.topic") shouldBe "Hello world!!!"
+        val consumedRecord = consumeFirstRawRecord[String, String]("kamon.topic")
+        consumedRecord.value() shouldBe "Hello world!!!"
 
         awaitNumReportedSpans(3)
 
@@ -98,6 +101,8 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           span.metricTags.get(plain("kafka.clientId")) should not be empty
           span.metricTags.get(plain("kafka.groupId")) should not be empty
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
+          span.tags.get(plainLong("kafka.timestamp")) shouldBe consumedRecord.timestamp()
+          span.tags.get(plain("kafka.timestampType")) shouldBe consumedRecord.timestampType().name
         }
       }
     }
@@ -229,8 +234,6 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           span.metricTags.get(plain("kafka.clientId")) should not be empty
           span.metricTags.get(plain("kafka.groupId")) should not be empty
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
-          span.tags.get(plainLong("kafka.timestamp")).asInstanceOf[Long] should be > 0L
-          span.tags.get(plain("kafka.timestampType")) should not be empty
           span.links should have size 2
           val sendinglinks = span.links.filter(_.trace.id == sendingSpan.get.trace.id)
           sendinglinks should have size 1
