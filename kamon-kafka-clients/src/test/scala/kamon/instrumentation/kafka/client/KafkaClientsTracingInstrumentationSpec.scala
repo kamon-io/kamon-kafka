@@ -44,14 +44,14 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
 
   implicit val patienceConfigTimeout = timeout(20 seconds)
 
+  import Client._
+
   val testTopicName = "kamon.topic"
 
   "The Kafka Clients Tracing Instrumentation" should {
 
     "provide the consumed-record span to clients" in new SpanReportingTestScope(reporter) {
       withRunningKafka {
-
-        import kamon.instrumentation.kafka.client.ContextExtractionSupport._
         import net.manub.embeddedkafka.Codecs.stringDeserializer
 
         publishStringMessageToKafka(testTopicName, "Hello world!!!!!")

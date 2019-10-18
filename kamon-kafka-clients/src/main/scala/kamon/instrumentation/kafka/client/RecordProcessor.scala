@@ -9,11 +9,12 @@ import org.apache.kafka.clients.consumer.ConsumerRecords
 
 object RecordProcessor {
 
-  import ContextExtractionSupport._
-
   import scala.collection.JavaConverters._
 
   def process[V, K](startTime: Instant, clientId: String, groupId: String, records: ConsumerRecords[K, V]): ConsumerRecords[K, V] = {
+
+    import Client._
+
     if (!records.isEmpty) {
       val spanBuilder = Kamon.consumerSpanBuilder("poll", "kafka.consumer")
         .tagMetrics("kafka.clientId", clientId)
