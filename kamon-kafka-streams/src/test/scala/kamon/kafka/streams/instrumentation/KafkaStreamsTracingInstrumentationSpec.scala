@@ -26,7 +26,6 @@ import net.manub.embeddedkafka.Codecs._
 import net.manub.embeddedkafka.ConsumerExtensions._
 import net.manub.embeddedkafka.EmbeddedKafkaConfig
 import net.manub.embeddedkafka.streams.EmbeddedKafkaStreamsAllInOne
-import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.common.serialization.{Serde, Serdes}
 import org.apache.kafka.streams.{StreamsConfig, scala}
 import org.scalatest.concurrent.Eventually
@@ -59,7 +58,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
   "The Kafka Streams Tracing Instrumentation" should {
 
-    "ensure continuation of traces from 'regular' publishers and streams with 'followStrategy' and assert stream and node spans are poresent" in new SpanReportingTestScope(reporter) with ConfigSupport {
+    "ensure continuation of traces from 'regular' publishers and streams with 'followStrategy' and assert stream and node spans are present" in new SpanReportingTestScope(reporter) with ConfigSupport {
 
       // Explicitly enable follow-strategy ...
       reconfigureKamon("kamon.kafka.client.follow-strategy = true")

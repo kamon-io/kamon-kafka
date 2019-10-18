@@ -15,7 +15,7 @@
 package kamon.kafka.testutil
 
 import java.io.{BufferedWriter, File, FileWriter, InputStream}
-import java.time.Duration
+import java.time.{Duration, LocalDateTime}
 import java.util.function.Consumer
 
 import kamon.tag.Lookups.plain
@@ -46,7 +46,7 @@ object DotFileGenerator {
   def dumpToDotFile(filename: String, spans: List[Span.Finished]): Unit = {
     if(System.getenv().containsKey("DOTFILEGENERATOR_ENABLED")) {
       val renderAllTags = System.getenv().containsKey("DOTFILEGENERATOR_ALLTAGS")
-      val dotText = toDotString(spans, renderAllTags)
+      val dotText = toDotString(spans, filename, renderAllTags)
       val file = new File(filename + ".dot")
       val bw = new BufferedWriter(new FileWriter(file))
       bw.write(dotText)
@@ -81,7 +81,7 @@ object DotFileGenerator {
   }
 
 
-  private def toDotString(spans: List[Span.Finished], allTags: Boolean = false): String = {
+  private def toDotString(spans: List[Span.Finished], name: String, allTags: Boolean = false): String = {
     def filterTags(span: Span.Finished) : List[(String,String)]= {
       if(allTags) {
         (span.tags.iterator.map(t => t.key -> Tag.unwrapValue(t).toString) ++
@@ -158,6 +158,12 @@ object DotFileGenerator {
 
     s"""
        |digraph G {
+       | label=<
+       |   <table border="0" cellborder="0" cellspacing="0">
+       |    <tr><td><b>$name</b></td></tr>
+       |    <tr><td>${LocalDateTime.now()}</td></tr>
+       |   </table>
+       | >
        | $createSubgraphsPerTrace
        | $createParentEdges
        | $createLinkEdges

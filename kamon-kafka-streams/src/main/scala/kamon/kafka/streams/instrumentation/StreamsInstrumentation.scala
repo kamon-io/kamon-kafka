@@ -13,29 +13,39 @@
  * and limitations under the License.
  * =========================================================================================
  */
-
 package kamon.kafka.streams.instrumentation
 
-import kamon.Kamon
-import kamon.context.Context
-import kamon.kafka.client.instrumentation.ContextSerializationHelper
-import kamon.kafka.streams.Streams
-import kamon.trace.Span
+import kamon.instrumentation.context.HasContext
+import kamon.kafka.streams.instrumentation.advisor.{HasConsumerRecord, ProcessorContextBridge, ProcessorProcessMethodAdvisor, RecordCollectorSendAdvisor, RecordCollectorSupplierAdvisor, RecordDeserializerAdvisor, StampedRecordAdvisor, StreamTaskProcessMethodAdvisor, StreamTaskUpdateProcessContextAdvisor}
 import kanela.agent.api.instrumentation.InstrumentationBuilder
-import kanela.agent.libs.net.bytebuddy.asm.Advice
-import org.apache.kafka.common.header.Header
-import org.apache.kafka.streams.processor.internals.{ProcessorNode, StampedRecord, StreamTask}
-
 
 class StreamsInstrumentation extends InstrumentationBuilder {
 
   /**
-    * Instruments org.apache.kafka.streams.processor.internals.ProcessorNode::process
-    *
-    * This will start and finish the stream topology node span
+    * This is required to access the original ConsumerRecord wrapped by StampedRecord
+    * in order to extract his span. This span can then be used a parent for the
+    * span representing the stream.
     */
-  onType("org.apache.kafka.streams.processor.internals.ProcessorNode")
-    .advise(method("process"), classOf[ProcessorNodeProcessMethodAdvisor])
+  onSubTypesOf("org.apache.kafka.streams.processor.internals.StampedRecord")
+    .mixin(classOf[HasConsumerRecord.Mixin])
+    .advise(isConstructor, classOf[StampedRecordAdvisor])
+
+  /**
+    * This propagates the span from the original "raw" record to the "deserialized" record
+    * that is processed by the stream.
+    */
+  onType("org.apache.kafka.streams.processor.internals.RecordDeserializer")
+    .advise(method("deserialize"), classOf[RecordDeserializerAdvisor])
+
+  /**
+    * Instrument KStream's AbstractProcessor.process for creating node-specifc spans.
+    * This can be enabled/disable via configuration.
+    * Also provide a bridge to access the internal processor context which carries
+    * the Kamon context.
+    */
+  onSubTypesOf("org.apache.kafka.streams.processor.AbstractProcessor")
+    .advise(method("process"), classOf[ProcessorProcessMethodAdvisor])
+    .bridge(classOf[ProcessorContextBridge])
 
   /**
     * Instruments org.apache.kafka.streams.processor.internals.StreamTask::updateProcessorContext
@@ -45,85 +55,31 @@ class StreamsInstrumentation extends InstrumentationBuilder {
     *
     */
   onType("org.apache.kafka.streams.processor.internals.StreamTask")
-    .advise(method("updateProcessorContext"), classOf[UpdateProcessContextAdvisor])
-    .advise(method("process"), classOf[ProcessMethodAdvisor])
+    .advise(method("updateProcessorContext"), classOf[StreamTaskUpdateProcessContextAdvisor])
+    .advise(method("process"), classOf[StreamTaskProcessMethodAdvisor])
+
+  /**
+    * Keep the stream's Kamon context on the (Abstract)ProcessorContext so that it is available
+    * to all participants of this stream's processing.
+    */
+  onSubTypesOf("org.apache.kafka.streams.processor.internals.AbstractProcessorContext")
+    .mixin(classOf[HasContext.VolatileMixin])
+
+  /**
+    * Propagate the Kamon context from ProcessorContext to the RecordCollector.
+    */
+  onSubTypesOf("org.apache.kafka.streams.processor.internals.RecordCollector$Supplier")
+    .advise(method("recordCollector"), classOf[RecordCollectorSupplierAdvisor])
+
+  /**
+    * Have the Kamon context available, store it when invoking the send method so that it can be picked
+    * up by the ProducerInstrumentation and close it after the call.
+    *
+    * It must match the correct version of the send method since there are two with different signatures,
+    * one delegating to the other. Without the match on the 4th argument both send methods would be instrumented.
+    */
+  onSubTypesOf("org.apache.kafka.streams.processor.internals.RecordCollector")
+    .mixin(classOf[HasContext.VolatileMixin])
+    .advise(method("send").and(withArgument(4, classOf[Integer])), classOf[RecordCollectorSendAdvisor])
 
 }
-
-object ContextHelper {
-  def     getContext(h: Header): Context = {
-    Option(h) match {
-      case Some(x) =>
-        ContextSerializationHelper.fromByteArray(x.value());
-      case _ =>
-        Context.Empty
-    }
-  }
-}
-
-class UpdateProcessContextAdvisor
-object UpdateProcessContextAdvisor {
-
-  @Advice.OnMethodExit(onThrowable = classOf[Throwable], suppress = classOf[Throwable])
-  def onExit(
-              @Advice.Argument(0) record: StampedRecord,
-              @Advice.Argument(1) currNode: ProcessorNode[_, _],
-              @Advice.This streamTask:StreamTask,
-              @Advice.Thrown throwable: Throwable):Unit = {
-
-    val header = record.headers().lastHeader("kamon-context");
-    val currentContext = ContextHelper.getContext(header);
-    val span = Kamon.consumerSpanBuilder(streamTask.applicationId(), "kafka.stream")
-      .asChildOf(currentContext.get(Span.Key))
-      .tagMetrics("kafka.topic", record.topic())
-      .tag("kafka.partition", record.partition())
-      .tag("kafka.offset", record.offset())
-      .start
-
-    Kamon.storeContext(Context.of(Span.Key, span));
-  }
-}
-
-class ProcessorNodeProcessMethodAdvisor
-object ProcessorNodeProcessMethodAdvisor {
-  @Advice.OnMethodEnter
-  def onEnter(@Advice.This node: ProcessorNode[_,_]): Context = {
-    if(Streams.traceNodes) {
-      val currentSpan = Kamon.currentSpan()
-      val span = Kamon.spanBuilder(node.name())
-        .asChildOf(currentSpan)
-        .tagMetrics("span.kind", "processor")
-        .tagMetrics("component", "kafka.stream.node")
-        .start()
-      Context.of(Span.Key, span)
-    } else
-      Context.Empty
-  }
-
-  @Advice.OnMethodExit(onThrowable = classOf[Throwable], suppress = classOf[Throwable])
-  def onExit(@Advice.This node: ProcessorNode[_,_], @Advice.Enter ctx: Context, @Advice.Thrown throwable: Throwable):Unit = {
-    if(Streams.traceNodes) {
-      val currentSpan = ctx.get(Span.Key)
-      if (throwable != null) currentSpan.fail(throwable.getMessage)
-      currentSpan.finish()
-    }
-  }
-}
-
-class ProcessMethodAdvisor
-object ProcessMethodAdvisor {
-
-  @Advice.OnMethodExit(onThrowable = classOf[Throwable], suppress = classOf[Throwable])
-  def onExit(@Advice.Origin r: Any, @Advice.This streamTask:StreamTask, @Advice.Return recordProcessed: Boolean, @Advice.Thrown throwable: Throwable):Unit = {
-
-    val currentSpan = Kamon.currentSpan()
-    if(recordProcessed) {
-      currentSpan.mark(s"kafka.streams.task.id=${streamTask.id()}")
-      currentSpan.tag("kafka.applicationId", streamTask.applicationId())
-
-      if(throwable != null) currentSpan.fail(throwable.getMessage)
-      currentSpan.finish()
-    }
-  }
-}
-

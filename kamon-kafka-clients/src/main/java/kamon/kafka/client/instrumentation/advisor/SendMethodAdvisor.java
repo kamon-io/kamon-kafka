@@ -15,7 +15,9 @@
 package kamon.kafka.client.instrumentation.advisor;
 
 import kamon.Kamon;
+import kamon.context.Context;
 import kamon.context.Storage;
+import kamon.instrumentation.context.HasContext;
 import kamon.kafka.client.instrumentation.ContextSerializationHelper;
 import kamon.kafka.client.instrumentation.ProducerCallback;
 import kamon.trace.Span;
@@ -33,19 +35,20 @@ public class SendMethodAdvisor {
                                @Advice.Argument(value = 1, readOnly = false) Callback callback,
                                @Advice.Local("scope") Storage.Scope scope,
                                @Advice.FieldValue("clientId") String clientId) {
-        val currentContext = Kamon.currentContext();
+        val currentContext = ((HasContext) record).context();
         val topic = record.topic() == null ? "kafka" : record.topic();
         val partition = record.partition() == null ? "unknown-partition" : record.partition().toString();
         val value = record.key() == null ? "unknown-key" : record.key().toString();
 
         val span = Kamon.producerSpanBuilder("send", "kafka.producer")
+                .asChildOf(currentContext.get(Span.Key()))
                 .tagMetrics("kafka.topic", topic)
                 .tagMetrics("kafka.clientId", clientId)
                 .tag("kafka.key", value)
                 .tag("kafka.partition", partition)
                 .start();
 
-        val ctx = currentContext.withEntry(Span.Key(), span);
+        val ctx = Context.of(Span.Key(), span);
         record.headers().add("kamon-context", ContextSerializationHelper.toByteArray(ctx));
 
         scope = Kamon.storeContext(ctx);
@@ -53,6 +56,7 @@ public class SendMethodAdvisor {
 
     }
 
+    // TODO: Isn't this taken care of in the callback? Or is this for the exception case?
     @Advice.OnMethodExit(onThrowable = Throwable.class, suppress = Throwable.class)
     public static void onExit(@Advice.Local("scope") Storage.Scope scope,
                               @Advice.Thrown final Throwable throwable) {

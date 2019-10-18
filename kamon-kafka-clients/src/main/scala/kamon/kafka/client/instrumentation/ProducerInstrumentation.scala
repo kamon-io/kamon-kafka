@@ -17,6 +17,7 @@
 package kamon.kafka.client.instrumentation
 
 import kamon.context.Storage.Scope
+import kamon.instrumentation.context.HasContext
 import kamon.kafka.client.instrumentation.advisor.SendMethodAdvisor
 import kamon.trace.Span
 import kanela.agent.api.instrumentation.InstrumentationBuilder
@@ -30,6 +31,8 @@ class ProducerInstrumentation extends InstrumentationBuilder {
   onType("org.apache.kafka.clients.producer.KafkaProducer")
     .advise(method("send").and(takesArguments(2)), classOf[SendMethodAdvisor])
 
+  onType("org.apache.kafka.clients.producer.ProducerRecord")
+    .mixin(classOf[HasContext.VolatileMixinWithInitializer])
 }
 
 /**
