@@ -14,6 +14,8 @@
  */
 package kamon.instrumentation.kafka.testutil
 
+import java.util.Properties
+
 import kamon.testkit.TestSpanReporter
 import kamon.trace.Span
 import net.manub.embeddedkafka.Consumers

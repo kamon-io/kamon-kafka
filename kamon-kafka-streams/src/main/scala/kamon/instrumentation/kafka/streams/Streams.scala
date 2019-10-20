@@ -19,13 +19,16 @@ import com.typesafe.config.Config
 import kamon.Kamon
 
 object Streams {
+
+  val StreamsTraceFilterName = "kamon.instrumentation.kafka.streams.trace"
+  val TraceNodesConfigName = "kamon.instrumentation.kafka.streams.trace-nodes"
+
   @volatile var traceNodes: Boolean = traceNodesFromConfig(Kamon.config())
 
   private def traceNodesFromConfig(config: Config): Boolean =
-    Kamon.config.getBoolean("kamon.instrumentation.kafka.streams.trace-nodes")
+    Kamon.config.getBoolean(TraceNodesConfigName)
 
-  Kamon.onReconfigure( (newConfig: Config) => {
+  Kamon.onReconfigure{ newConfig: Config =>
     traceNodes = traceNodesFromConfig(newConfig)
   }
-  )
 }

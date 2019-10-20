@@ -31,6 +31,7 @@ import scala.util.{Failure, Success, Try}
 class ProcessorProcessMethodAdvisor
 object ProcessorProcessMethodAdvisor {
 
+  // todo: this was initially meant as a safety net if the mixin was not applied, but is it really needed since this and the mixin are part of the same instrumentation?
   def extractContract(pc: ProcessorContext): Option[InternalProcessorContext with HasContext] = {
     Try {
       pc.asInstanceOf[InternalProcessorContext with HasContext]
@@ -43,12 +44,15 @@ object ProcessorProcessMethodAdvisor {
     }
   }
 
+  private def shouldTrace(processorContext: Option[InternalProcessorContext with  HasContext]): Boolean =
+    Streams.traceNodes && processorContext.map(ctx => Kamon.filter(Streams.StreamsTraceFilterName).accept(ctx.applicationId())).exists(x => x)
+
   @Advice.OnMethodEnter
   def onEnter(@Advice.This node: AbstractProcessor[_, _] with ProcessorContextBridge): Context = {
 
     // This may results in None if an unexpected context type is present
     val processorContext = extractContract(node.contextBridge())
-    if (Streams.traceNodes) {
+    if (shouldTrace(processorContext)) {
       val span = Kamon.spanBuilder(processorContext.fold("Unknown")(_.currentNode().name()))
         .asChildOf(processorContext.fold(Context.Empty)(_.context).get(Span.Key))
         .tagMetrics("span.kind", "processor")
@@ -60,8 +64,8 @@ object ProcessorProcessMethodAdvisor {
   }
 
   @Advice.OnMethodExit(onThrowable = classOf[Throwable], suppress = classOf[Throwable])
-  def onExit(@Advice.This node: AbstractProcessor[_, _], @Advice.Enter ctx: Context, @Advice.Thrown throwable: Throwable): Unit = {
-    if (Streams.traceNodes) {
+  def onExit(@Advice.This node: AbstractProcessor[_, _] with ProcessorContextBridge, @Advice.Enter ctx: Context, @Advice.Thrown throwable: Throwable): Unit = {
+    if (shouldTrace(extractContract(node.contextBridge()))) {
       val currentSpan = ctx.get(Span.Key)
       if (throwable != null) currentSpan.fail(throwable.getMessage)
       currentSpan.finish()

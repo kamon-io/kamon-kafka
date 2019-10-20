@@ -18,6 +18,7 @@ package kamon.instrumentation.kafka.streams.advisor
 import kamon.Kamon
 import kamon.context.Context
 import kamon.instrumentation.context.HasContext
+import kamon.instrumentation.kafka.streams.Streams
 import kamon.trace.Span
 import kanela.agent.libs.net.bytebuddy.asm.Advice
 import org.apache.kafka.streams.processor.internals.{InternalProcessorContext, ProcessorNode, StampedRecord, StreamTask}
@@ -36,15 +37,19 @@ object StreamTaskUpdateProcessContextAdvisor {
               @Advice.FieldValue("processorContext") processorCtx: InternalProcessorContext with HasContext,
               @Advice.Thrown throwable: Throwable): Unit = {
 
-    val maybeParentSpan = record.consumerRecord.map(_.context.get(Span.Key))
-    val spanBuilder = Kamon.consumerSpanBuilder(streamTask.applicationId(), "kafka.stream")
-      .tagMetrics("kafka.topic", record.topic())
-      .tag("kafka.partition", record.partition())
-      .tag("kafka.offset", record.offset())
-    maybeParentSpan.foreach(parentSpan => spanBuilder.asChildOf(parentSpan))
+    val applicationId = streamTask.applicationId()
 
-    val span = spanBuilder.start()
-    processorCtx.setContext(Context.of(Span.Key, span))
+    if(Kamon.filter(Streams.StreamsTraceFilterName).accept(applicationId)) {
+      val maybeParentSpan = record.consumerRecord.map(_.context.get(Span.Key))
+      val spanBuilder = Kamon.consumerSpanBuilder(applicationId, "kafka.stream")
+        .tagMetrics("kafka.topic", record.topic())
+        .tag("kafka.partition", record.partition())
+        .tag("kafka.offset", record.offset())
+      maybeParentSpan.foreach(parentSpan => spanBuilder.asChildOf(parentSpan))
+
+      val span = spanBuilder.start()
+      processorCtx.setContext(Context.of(Span.Key, span))
+    }
   }
 }
 
@@ -58,13 +63,15 @@ object StreamTaskProcessMethodAdvisor {
              @Advice.FieldValue("processorContext") processorCtx: InternalProcessorContext with HasContext,
              @Advice.Thrown throwable: Throwable): Unit = {
 
-    val currentSpan = processorCtx.context.get(Span.Key)
-    if (recordProcessed) {
-      currentSpan.mark(s"kafka.streams.task.id=${streamTask.id()}")
-      currentSpan.tag("kafka.applicationId", streamTask.applicationId())
+    if(Kamon.filter(Streams.StreamsTraceFilterName).accept(streamTask.applicationId())) {
+      val currentSpan = processorCtx.context.get(Span.Key)
+      if (recordProcessed) {
+        currentSpan.mark(s"kafka.streams.task.id=${streamTask.id()}")
+        currentSpan.tag("kafka.applicationId", streamTask.applicationId())
 
-      if (throwable != null) currentSpan.fail(throwable.getMessage)
-      currentSpan.finish()
+        if (throwable != null) currentSpan.fail(throwable.getMessage)
+        currentSpan.finish()
+      }
     }
   }
 }
