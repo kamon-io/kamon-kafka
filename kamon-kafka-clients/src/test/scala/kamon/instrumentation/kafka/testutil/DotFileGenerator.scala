@@ -54,7 +54,10 @@ object DotFileGenerator {
       if(System.getenv().containsKey("DOTFILEGENERATOR_CMD")) {
         val cmd = System.getenv().get("DOTFILEGENERATOR_CMD").replace("$FILENAME", filename)
         val rc = executeShellCommand("sh", "-c", cmd)
-        if(rc != 0) {
+        if(rc == 0) {
+          println(s"DotFileGenerator: wrote and processed file: ${file.getAbsolutePath}")
+        }
+        else {
           println(s"DOT generation failed! rc=$rc, cmd='$cmd'")
         }
       }

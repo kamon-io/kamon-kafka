@@ -16,7 +16,7 @@
 package kamon.instrumentation.kafka.streams
 
 import com.typesafe.config.ConfigFactory
-import kamon.Kamon
+import kamon.{ClassLoading, Kamon}
 import kamon.instrumentation.kafka.client.Client
 import kamon.instrumentation.kafka.streams.testutil.StreamsTestSupport
 import kamon.instrumentation.kafka.testutil.{DotFileGenerator, SpanReportingTestScope, TestSpanReporting}
@@ -195,35 +195,6 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       }
     }
 
-    "Enable stream tracing only for configured applicationIds" in new SpanReportingTestScope(reporter) with ConfigSupport {
-
-      import net.manub.embeddedkafka.Codecs._
-
-      // Explicitly set includes ....
-      reconfigureKamon(s"""
-          |kamon.instrumentation.kafka.streams.trace.includes = [ "${streamAppId + "NOT"}"]
-        """.stripMargin)
-
-      val streamAppId = "SimpleStream_AppId"
-      runStreams(Seq(inTopic, outTopic), buildExampleTopology, extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
-        publishToKafka(inTopic, "k1", "v1")
-        publishToKafka(inTopic, "k2", "v2")
-        publishToKafka(inTopic, "k3", "v3")
-
-        withConsumer[String, String, Unit] { consumer =>
-          val consumedMessages: Stream[(String, String)] = consumer.consumeLazily(outTopic)
-          consumedMessages.take(3) should be(Seq("k1" -> "v1", "k2" -> "v2", "k3" -> "v3"))
-        }
-
-        awaitNumReportedSpans(14)
-
-        // expect no spans for the stream - the applicationId should NOT be included out
-        reportedSpans.filter(_.tags.get(plain("kafka.applicationId")) == streamAppId).map(_.trace.id.string) shouldBe empty
-
-        DotFileGenerator.dumpToDotFile("stream-3-events-with-nodes-and-filter", reportedSpans)
-      }
-    }
-
     "multiple streams - no nodes" in new SpanReportingTestScope(reporter) with ConfigSupport with StreamsTestSupport {
 
       import net.manub.embeddedkafka.Codecs._
@@ -236,7 +207,6 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         val stream1AppId = "SimpleStream_AppId_1"
         val stream2AppId = "SimpleStream_AppId_2"
 
-        // Map(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "true")
         val streams1 = new KafkaStreams(
           buildExampleTopology,
           map2Properties(streamsConfig.config(stream1AppId, Map.empty)))
@@ -258,7 +228,63 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
             consumedMessages.take(10) should have size 6
           }
 
-          awaitNumReportedSpans(30)
+          awaitReportedSpans()
+          assertNumSpansForOperation(stream1AppId, 3)
+          assertNumSpansForOperation(stream2AppId, 3)
+          assertNumSpansForOperation("consumed-record", 12)
+
+          DotFileGenerator.dumpToDotFile("stream-multiple-streams-no-nodes", reportedSpans)
+
+        } finally {
+          streams1.close()
+          streams2.close()
+        }
+      }
+    }
+
+    "multiple streams - filtered" in new SpanReportingTestScope(reporter) with ConfigSupport with StreamsTestSupport {
+
+      val stream1AppId = "SimpleStream_AppId_1"
+      val stream2AppId = "SimpleStream_AppId_2"
+
+      import net.manub.embeddedkafka.Codecs._
+
+      // Explicitly set includes ....
+      reconfigureKamon(s"""
+        |kamon.instrumentation.kafka.streams.trace.includes = [ "$stream2AppId"]
+        """.stripMargin)
+
+      disableNodeTracing()
+
+      withRunningKafka {
+        Seq(inTopic, outTopic).foreach(topic => createCustomTopic(topic))
+
+
+        val streams1 = new KafkaStreams(
+          buildExampleTopology,
+          map2Properties(streamsConfig.config(stream1AppId, Map.empty)))
+        streams1.start()
+
+        val streams2 = new KafkaStreams(
+          buildExampleTopology,
+          map2Properties(streamsConfig.config(stream2AppId, Map.empty)))
+        streams2.start()
+
+        try {
+
+          publishToKafka(inTopic, "k1", "v1")
+          publishToKafka(inTopic, "k2", "v2")
+          publishToKafka(inTopic, "k3", "v3")
+
+          withConsumer[String, String, Unit] { consumer =>
+            val consumedMessages: Stream[(String, String)] = consumer.consumeLazily(outTopic)
+            consumedMessages.take(10) should have size 6
+          }
+
+          awaitReportedSpans()
+          assertNumSpansForOperation(stream1AppId, 0)
+          assertNumSpansForOperation(stream2AppId, 3)
+          assertNumSpansForOperation("consumed-record", 12)
 
           DotFileGenerator.dumpToDotFile("stream-multiple-streams-no-nodes", reportedSpans)
 
@@ -288,7 +314,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
           map2Properties(streamsConfig.config(stream1AppId,
             Map(
               StreamsConfig.NUM_STREAM_THREADS_CONFIG -> "3",
-              ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG -> "1000"
+              ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG -> "500"
             )
           )))
         streams.start()
@@ -296,12 +322,18 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         try {
           import net.manub.embeddedkafka.Codecs._
           publishToKafka(inTopic,(1 to 10).map(i =>  s"k$i" -> s"v$i"))
+
+          // This is needed in order to the streams a chance to run and produce output
+          Thread.sleep(2000)
+
           withConsumer[String, String, Unit] { consumer =>
             val consumedMessages: Stream[(String, String)] = consumer.consumeLazily(outTopic)
             consumedMessages.take(10) should have size 10
           }
 
-          awaitNumReportedSpans(54)
+          awaitReportedSpans()
+          assertNumSpansForOperation(stream1AppId, 10)
+          assertNumSpansForOperation("consumed-record", 20)
 
           DotFileGenerator.dumpToDotFile("stream-multiple-threads", reportedSpans)
 
@@ -333,6 +365,9 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 }
 
 trait ConfigSupport { _: Matchers =>
+
+ def resetConfig(): Unit = Kamon.reconfigure(ConfigFactory.load(ClassLoading.classLoader()).resolve())
+
   def reconfigureKamon(config: String): Unit =
     Kamon.reconfigure(ConfigFactory.parseString(config).withFallback(Kamon.config()))
 

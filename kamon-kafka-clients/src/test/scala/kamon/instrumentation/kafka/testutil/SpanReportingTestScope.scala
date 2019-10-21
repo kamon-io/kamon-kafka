@@ -33,10 +33,20 @@ abstract class SpanReportingTestScope(_reporter: TestSpanReporter.BufferingSpanR
   def assertNoSpansReported(): Unit =
     _reporter.nextSpan() shouldBe None
 
+  def awaitReportedSpans(waitBetweenPollInMs: Int = 2000): Unit = {
+    def doIt(prevNumReportedSpans: Int): Unit = {
+      Thread.sleep(waitBetweenPollInMs)
+      collectReportedSpans()
+      if(reportedSpans.size != prevNumReportedSpans)
+        doIt(reportedSpans.size)
+    }
+    doIt(reportedSpans.size)
+  }
+
   def awaitNumReportedSpans(numOfExpectedSpans: Int)(implicit timeout: PatienceConfiguration.Timeout): Unit = {
     eventually(timeout) {
       collectReportedSpans()
-      _reportedSpans should have size numOfExpectedSpans
+      _reportedSpans.size shouldBe numOfExpectedSpans
     }
     Thread.sleep(1000)
     if(_reporter.nextSpan().isDefined) {
@@ -48,6 +58,9 @@ abstract class SpanReportingTestScope(_reporter: TestSpanReporter.BufferingSpanR
     _reporter.nextSpan().foreach { s =>
       _reportedSpans = s :: _reportedSpans
     }
+
+  def assertNumSpansForOperation(operationName: String, numExpectedSpans: Int): Unit =
+    reportedSpans.filter(_.operationName == operationName) should have size numExpectedSpans
 
   def assertReportedSpan[T](p: Span.Finished => Boolean)(f: Span.Finished => T): T = {
     _reportedSpans.filter(p) match {

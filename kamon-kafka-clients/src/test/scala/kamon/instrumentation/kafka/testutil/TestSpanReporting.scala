@@ -17,19 +17,20 @@ package kamon.instrumentation.kafka.testutil
 import kamon.Kamon
 import kamon.module.Module.Registration
 import kamon.testkit.{Reconfigure, TestSpanReporter}
-import org.scalatest.BeforeAndAfterAll
+import org.scalatest.{BeforeAndAfter, BeforeAndAfterAll}
 
-trait TestSpanReporting extends Reconfigure { _: BeforeAndAfterAll =>
+trait TestSpanReporting extends Reconfigure { _: BeforeAndAfter =>
   var registration: Registration = _
   val reporter = new TestSpanReporter.BufferingSpanReporter
 
-  override protected def beforeAll(): Unit = {
+  before {
+    reset()
     enableFastSpanFlushing()
     sampleAlways()
     registration = Kamon.registerModule("TestSpanReporter", reporter)
   }
 
-  override protected def afterAll(): Unit = {
+  after {
     registration.cancel()
   }
 }

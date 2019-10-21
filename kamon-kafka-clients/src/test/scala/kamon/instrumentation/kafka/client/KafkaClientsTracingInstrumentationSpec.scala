@@ -25,13 +25,13 @@ import net.manub.embeddedkafka.{Consumers, EmbeddedKafka, EmbeddedKafkaConfig}
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.scalatest.concurrent.Eventually
 import org.scalatest.time.SpanSugar
-import org.scalatest.{BeforeAndAfterAll, Matchers, OptionValues, WordSpec}
+import org.scalatest.{BeforeAndAfter, BeforeAndAfterAll, Matchers, OptionValues, WordSpec}
 
 class KafkaClientsTracingInstrumentationSpec extends WordSpec
   with Matchers
   with Eventually
   with SpanSugar
-  with BeforeAndAfterAll
+  with BeforeAndAfter
   with EmbeddedKafka
   with Reconfigure
   with OptionValues
