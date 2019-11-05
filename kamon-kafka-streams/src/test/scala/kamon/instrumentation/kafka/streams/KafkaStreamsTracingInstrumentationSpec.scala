@@ -16,6 +16,7 @@
 package kamon.instrumentation.kafka.streams
 
 import com.typesafe.config.ConfigFactory
+import kamon.context.Context
 import kamon.{ClassLoading, Kamon}
 import kamon.instrumentation.kafka.client.Client
 import kamon.instrumentation.kafka.streams.testutil.StreamsTestSupport
@@ -70,7 +71,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       Client.followStrategy shouldBe true
 
       val streamAppId = "SimpleStream_AppId"
-      runStreams(Seq(inTopic, outTopic), buildExampleTopology, extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
+      runStreams(Seq(inTopic, outTopic), buildExampleTopology(), extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
         publishToKafka(inTopic, "hello", "world!")
 
 
@@ -79,13 +80,14 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
           consumedMessages.take(1) should be(Seq("hello" -> "world!"))
         }
 
-        awaitNumReportedSpans(9)
+        awaitReportedSpans()
+
         var streamTraceId =
           assertReportedSpan(_.tags.get(plain("kafka.applicationId")) == streamAppId){ span => span.trace.id.string }
 
         val traceOps = reportedSpans.filter(_.trace.id.string == streamTraceId).map(_.operationName)
-        traceOps should have size 7
-        traceOps should contain allOf("consumed-record", streamAppId, "KSTREAM-FILTER-0000000001", "KSTREAM-MAPVALUES-0000000002")
+        traceOps should have size 8
+        traceOps should contain allOf("consumed-record", streamAppId, "KSTREAM-FILTER-0000000001", "KSTREAM-PEEK-0000000002", "KSTREAM-MAPVALUES-0000000003", "send")
 
         DotFileGenerator.dumpToDotFile("stream-simple", reportedSpans)
       }
@@ -105,7 +107,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       Streams.traceNodes shouldBe false
 
       val streamAppId = "SimpleStream_AppId"
-      runStreams(Seq(inTopic, outTopic), buildExampleTopology, extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
+      runStreams(Seq(inTopic, outTopic), buildExampleTopology(), extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
         publishToKafka(inTopic, "hello", "world!")
 
         withConsumer[String, String, Unit] { consumer =>
@@ -140,7 +142,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       Streams.traceNodes shouldBe false
 
       val streamAppId = "SimpleStream_AppId"
-      runStreams(Seq(inTopic, outTopic), buildExampleTopology, extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
+      runStreams(Seq(inTopic, outTopic), buildExampleTopology(assertContextNotEmpty = true), extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
         publishToKafka(inTopic, "k1", "v1")
         publishToKafka(inTopic, "k2", "v2")
         publishToKafka(inTopic, "k3", "v3")
@@ -174,7 +176,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       Streams.traceNodes shouldBe true
 
       val streamAppId = "SimpleStream_AppId"
-      runStreams(Seq(inTopic, outTopic), buildExampleTopology, extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
+      runStreams(Seq(inTopic, outTopic), buildExampleTopology(assertContextNotEmpty = true), extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
         publishToKafka(inTopic, "k1", "v1")
         publishToKafka(inTopic, "k2", "v2")
         publishToKafka(inTopic, "k3", "v3")
@@ -184,14 +186,15 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
           consumedMessages.take(3) should be(Seq("k1" -> "v1", "k2" -> "v2", "k3" -> "v3"))
         }
 
-        awaitNumReportedSpans(23)
+        awaitReportedSpans()
 
         // expect 3 different traceIds - one for each event pushed
         val traceIds = reportedSpans.filter(_.tags.get(plain("kafka.applicationId")) == streamAppId).map(_.trace.id.string)
         traceIds should have size 3
-        traceIds.foreach(tId => reportedSpans.filter(_.trace.id.string == tId) should have size 7)
 
-        DotFileGenerator.dumpToDotFile("stream-3-events-with-nodes", reportedSpans)
+        traceIds.foreach(tId => reportedSpans.filter(_.trace.id.string == tId) should have size 8)
+
+        DotFileGenerator.dumpToDotFile("stream-3-events-with-nodes-WIP", reportedSpans)
       }
     }
 
@@ -208,12 +211,12 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         val stream2AppId = "SimpleStream_AppId_2"
 
         val streams1 = new KafkaStreams(
-          buildExampleTopology,
+          buildExampleTopology(),
           map2Properties(streamsConfig.config(stream1AppId, Map.empty)))
         streams1.start()
 
         val streams2 = new KafkaStreams(
-          buildExampleTopology,
+          buildExampleTopology(),
           map2Properties(streamsConfig.config(stream2AppId, Map.empty)))
         streams2.start()
 
@@ -242,6 +245,51 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       }
     }
 
+    "multiple streams - sequential" in new SpanReportingTestScope(reporter) with ConfigSupport with StreamsTestSupport {
+
+      import net.manub.embeddedkafka.Codecs._
+
+      val inTopic1 = inTopic + "1"
+      val outTopic1 = outTopic + "1"
+      val outTopic2 = outTopic + "2"
+      disableNodeTracing()
+
+      withRunningKafka {
+        Seq(inTopic1, outTopic1, outTopic2).foreach(topic => createCustomTopic(topic))
+
+        val stream1AppId = "SimpleStream_AppId_1"
+        val stream2AppId = "SimpleStream_AppId_2"
+
+        val streams1 = new KafkaStreams(
+          buildExampleTopology(inTopic1, outTopic1),
+          map2Properties(streamsConfig.config(stream1AppId, Map.empty)))
+        streams1.start()
+
+        val streams2 = new KafkaStreams(
+          buildExampleTopology(outTopic1, outTopic2),
+          map2Properties(streamsConfig.config(stream2AppId, Map.empty)))
+        streams2.start()
+
+        try {
+
+          publishToKafka(inTopic1, "k1", "v1")
+
+          withConsumer[String, String, Unit] { consumer =>
+            val consumedMessages: Stream[(String, String)] = consumer.consumeLazily(outTopic2)
+            consumedMessages.take(10) should have size 1
+          }
+
+          awaitReportedSpans()
+
+          DotFileGenerator.dumpToDotFile("stream-multiple-streams-sequential", reportedSpans)
+
+        } finally {
+          streams1.close()
+          streams2.close()
+        }
+      }
+    }
+
     "multiple streams - filtered" in new SpanReportingTestScope(reporter) with ConfigSupport with StreamsTestSupport {
 
       val stream1AppId = "SimpleStream_AppId_1"
@@ -261,12 +309,12 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
 
         val streams1 = new KafkaStreams(
-          buildExampleTopology,
+          buildExampleTopology(),
           map2Properties(streamsConfig.config(stream1AppId, Map.empty)))
         streams1.start()
 
         val streams2 = new KafkaStreams(
-          buildExampleTopology,
+          buildExampleTopology(),
           map2Properties(streamsConfig.config(stream2AppId, Map.empty)))
         streams2.start()
 
@@ -310,7 +358,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         val stream1AppId = "SimpleStream_AppId_1"
 
         val streams = new KafkaStreams(
-          buildExampleTopology,
+          buildExampleTopology(),
           map2Properties(streamsConfig.config(stream1AppId,
             Map(
               StreamsConfig.NUM_STREAM_THREADS_CONFIG -> "3",
@@ -345,19 +393,20 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
   }
 
-  private def buildExampleTopology = {
+  private def buildExampleTopology(in: String = inTopic, out: String = outTopic, assertContextNotEmpty: Boolean = false) = {
     import scala.ImplicitConversions._
     import org.apache.kafka.streams.scala.Serdes.String
 
     val streamBuilder = new scala.StreamsBuilder
-    streamBuilder.stream[String, String](inTopic)
+    streamBuilder.stream[String, String](in)
       .filter((k, v) => true)
+      .peek((k,v) => if(assertContextNotEmpty && Kamon.currentContext() == Context.Empty) fail("Kamon.currentContext() == Context.Empty !!"))
       .mapValues{(k, v) => v}
       // todo: add detailed aggregate logging, including traceId of the previous update to the aggregate object
       //        .groupByKey
       //        .aggregate(""){ (k,v, agg) =>agg + v}
       //        .toStream
-      .to(outTopic)
+      .to(out)
 
     streamBuilder.build
   }

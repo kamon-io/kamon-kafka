@@ -17,6 +17,7 @@ package kamon.instrumentation.kafka.streams.advisor
 
 import kamon.Kamon
 import kamon.context.Context
+import kamon.context.Storage.Scope
 import kamon.instrumentation.context.HasContext
 import kamon.instrumentation.kafka.streams.Streams
 import kamon.instrumentation.kafka.streams.StreamsInstrumentation
@@ -32,7 +33,7 @@ class ProcessorProcessMethodAdvisor
 object ProcessorProcessMethodAdvisor {
 
   // todo: this was initially meant as a safety net if the mixin was not applied, but is it really needed since this and the mixin are part of the same instrumentation?
-  def extractContract(pc: ProcessorContext): Option[InternalProcessorContext with HasContext] = {
+  private def extractWrappedContext(pc: ProcessorContext): Option[InternalProcessorContext with HasContext] = {
     Try {
       pc.asInstanceOf[InternalProcessorContext with HasContext]
     } match {
@@ -48,11 +49,14 @@ object ProcessorProcessMethodAdvisor {
     Streams.traceNodes && processorContext.map(ctx => Kamon.filter(Streams.StreamsTraceFilterName).accept(ctx.applicationId())).exists(x => x)
 
   @Advice.OnMethodEnter
-  def onEnter(@Advice.This node: AbstractProcessor[_, _] with ProcessorContextBridge): Context = {
+  def onEnter(@Advice.This node: AbstractProcessor[_, _] with ProcessorContextBridge): Scope = {
 
     // This may results in None if an unexpected context type is present
-    val processorContext = extractContract(node.contextBridge())
-    if (shouldTrace(processorContext)) {
+    val processorContext = extractWrappedContext(node.contextBridge())
+
+    // Determine the context to use as `currentContext` during the execution of `process`
+    val newCurrentContext = if (shouldTrace(processorContext)) {
+      // create a new span for this node
       val span = Kamon.spanBuilder(processorContext.fold("Unknown")(_.currentNode().name()))
         .asChildOf(processorContext.fold(Context.Empty)(_.context).get(Span.Key))
         .tagMetrics("span.kind", "processor")
@@ -60,15 +64,19 @@ object ProcessorProcessMethodAdvisor {
         .start()
       Context.of(Span.Key, span)
     } else
-      Context.Empty
+      // use the stream context if it exists, otherwise fall back to Context.empty
+      processorContext.fold(Context.Empty)(_.context)
+
+   Kamon.storeContext(newCurrentContext)
   }
 
   @Advice.OnMethodExit(onThrowable = classOf[Throwable], suppress = classOf[Throwable])
-  def onExit(@Advice.This node: AbstractProcessor[_, _] with ProcessorContextBridge, @Advice.Enter ctx: Context, @Advice.Thrown throwable: Throwable): Unit = {
-    if (shouldTrace(extractContract(node.contextBridge()))) {
-      val currentSpan = ctx.get(Span.Key)
+  def onExit(@Advice.This node: AbstractProcessor[_, _] with ProcessorContextBridge, @Advice.Enter scope: Scope, @Advice.Thrown throwable: Throwable): Unit = {
+    if (shouldTrace(extractWrappedContext(node.contextBridge()))) {
+      val currentSpan = scope.context.get(Span.Key)
       if (throwable != null) currentSpan.fail(throwable.getMessage)
       currentSpan.finish()
     }
+    scope.close()
   }
 }

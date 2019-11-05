@@ -33,7 +33,7 @@ abstract class SpanReportingTestScope(_reporter: TestSpanReporter.BufferingSpanR
   def assertNoSpansReported(): Unit =
     _reporter.nextSpan() shouldBe None
 
-  def awaitReportedSpans(waitBetweenPollInMs: Int = 2000): Unit = {
+  def awaitReportedSpans(waitBetweenPollInMs: Int = 500): Unit = {
     def doIt(prevNumReportedSpans: Int): Unit = {
       Thread.sleep(waitBetweenPollInMs)
       collectReportedSpans()
