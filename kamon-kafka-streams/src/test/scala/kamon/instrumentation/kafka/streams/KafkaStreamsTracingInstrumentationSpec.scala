@@ -17,7 +17,7 @@ package kamon.instrumentation.kafka.streams
 
 import com.typesafe.config.ConfigFactory
 import kamon.context.Context
-import kamon.{ClassLoading, Kamon}
+import kamon.Kamon
 import kamon.instrumentation.kafka.client.Client
 import kamon.instrumentation.kafka.streams.testutil.StreamsTestSupport
 import kamon.instrumentation.kafka.testutil.{DotFileGenerator, SpanReportingTestScope, TestSpanReporting}
@@ -26,13 +26,13 @@ import kamon.testkit.Reconfigure
 import net.manub.embeddedkafka.ConsumerExtensions._
 import net.manub.embeddedkafka.EmbeddedKafkaConfig
 import net.manub.embeddedkafka.streams.EmbeddedKafkaStreamsAllInOne
-import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecord}
+import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.ProducerConfig
 import org.apache.kafka.common.serialization.{Serde, Serdes}
 import org.apache.kafka.streams.{KafkaStreams, StreamsConfig, scala}
 import org.scalatest.concurrent.Eventually
 import org.scalatest.time.SpanSugar
-import org.scalatest.{BeforeAndAfter, BeforeAndAfterAll, Matchers, OptionValues, WordSpec}
+import org.scalatest.{BeforeAndAfter, Matchers, OptionValues, WordSpec}
 
 
 class KafkaStreamsTracingInstrumentationSpec extends WordSpec
@@ -41,7 +41,6 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
   with Eventually
   with SpanSugar
   with BeforeAndAfter
-  with BeforeAndAfterAll
   with Reconfigure
   with OptionValues
   with TestSpanReporting {
@@ -76,7 +75,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       Streams.traceNodes shouldBe true
 
       val streamAppId = "SimpleStream_AppId"
-      runStreams(Seq(inTopic, outTopic), buildExampleTopology(), extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
+      runStreams(Seq(inTopic, outTopic), buildExampleTopology(assertContextNotEmpty = true), extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
         publishToKafka(inTopic, "hello1", "world1!")
         publishToKafka(inTopic, "hello2", "world2!")
 
@@ -370,20 +369,56 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       }
     }
 
-    "report exceptions as error tags on the span" ignore {
+    "report exceptions as error tags on the span" in new SpanReportingTestScope(reporter) with ConfigSupport with StreamsTestSupport  {
+      import net.manub.embeddedkafka.Codecs._
+
+      // Explicitly enable node tracing ...
+      reconfigureKamon(
+        """
+          |kamon.instrumentation.kafka.streams.trace-nodes = true
+          |""".stripMargin)
+      // ... and ensure that it is active
+      Streams.traceNodes shouldBe true
+
+      val streamAppId = "SimpleStream_AppId"
+      runStreams(Seq(inTopic, outTopic), buildExampleTopology(raiseException = true), extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
+        publishToKafka(inTopic, "hello1", "world1!")
+
+        awaitReportedSpans(2000)
+
+        val streamTraceIds = reportedSpans.filter(_.tags.get(plain("kafka.applicationId")) == streamAppId).map(_.trace.id.string).distinct
+        streamTraceIds should have size 1
+
+        // stream span should have marked with error
+        val streamSpans = reportedSpans.filter(s => s.operationName == streamAppId && s.trace.id.string == streamTraceIds.head)
+        streamSpans should have size 1
+        streamSpans.head.hasError shouldBe true
+        streamSpans.head.tags.get(any("error.stacktrace")).asInstanceOf[AnyRef] should not be null
+
+        // node span should be marked with error
+        val nodeSpans = reportedSpans.filter(s => s.operationName == "KSTREAM-PEEK-0000000002" && s.trace.id.string == streamTraceIds.head)
+        nodeSpans should have size 1
+        nodeSpans.head.hasError shouldBe true
+        nodeSpans.head.tags.get(any("error.stacktrace")).asInstanceOf[AnyRef] should not be null
+
+        DotFileGenerator.dumpToDotFile("stream-exception-tagged", reportedSpans)
+      }
 
     }
 
   }
 
-  private def buildExampleTopology(in: String = inTopic, out: String = outTopic, assertContextNotEmpty: Boolean = false) = {
+  private def buildExampleTopology(in: String = inTopic, out: String = outTopic, assertContextNotEmpty: Boolean = false, raiseException: Boolean = false) = {
     import scala.ImplicitConversions._
     import org.apache.kafka.streams.scala.Serdes.String
 
     val streamBuilder = new scala.StreamsBuilder
     streamBuilder.stream[String, String](in)
       .filter((k, v) => true)
-      .peek((k,v) => if(assertContextNotEmpty && Kamon.currentContext() == Context.Empty) fail("Kamon.currentContext() == Context.Empty !!"))
+      .peek { (k, v) =>
+        if (assertContextNotEmpty && Kamon.currentContext() == Context.Empty) fail("Kamon.currentContext() == Context.Empty !!")
+        if (raiseException) throw new RuntimeException("Peng!")
+      }
       .mapValues{(k, v) => v}
       // todo: add detailed aggregate logging, including traceId of the previous update to the aggregate object
       //        .groupByKey
@@ -393,12 +428,9 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
     streamBuilder.build
   }
-
 }
 
 trait ConfigSupport { _: Matchers =>
-
- def resetConfig(): Unit = Kamon.reconfigure(ConfigFactory.load(ClassLoading.classLoader()).resolve())
 
   def reconfigureKamon(config: String): Unit =
     Kamon.reconfigure(ConfigFactory.parseString(config).withFallback(Kamon.config()))

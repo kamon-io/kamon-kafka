@@ -65,11 +65,11 @@ object StreamTaskProcessMethodAdvisor {
 
     if(Kamon.filter(Streams.StreamsTraceFilterName).accept(streamTask.applicationId())) {
       val currentSpan = processorCtx.context.get(Span.Key)
-      if (recordProcessed) {
+      val maybeThrowable = Option(throwable)
+      maybeThrowable.foreach(t => currentSpan.fail(t))
+      if (recordProcessed || maybeThrowable.nonEmpty) {
         currentSpan.mark(s"kafka.streams.task.id=${streamTask.id()}")
         currentSpan.tag("kafka.applicationId", streamTask.applicationId())
-
-        if (throwable != null) currentSpan.fail(throwable.getMessage)
         currentSpan.finish()
       }
     }

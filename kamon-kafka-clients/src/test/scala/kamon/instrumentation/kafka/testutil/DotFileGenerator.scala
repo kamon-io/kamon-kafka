@@ -90,7 +90,10 @@ object DotFileGenerator {
         (span.tags.iterator.map(t => t.key -> Tag.unwrapValue(t).toString) ++
         span.metricTags.iterator.map(t => t.key -> Tag.unwrapValue(t).toString)).toList
       } else {
-        List("span.kind" -> span.metricTags.get(plain("span.kind")))
+        List(
+          "span.kind" -> span.metricTags.get(plain("span.kind")),
+          "hasError" -> span.hasError.toString
+        )
       }
     }
     def getLabel(s: Span.Finished) = {
