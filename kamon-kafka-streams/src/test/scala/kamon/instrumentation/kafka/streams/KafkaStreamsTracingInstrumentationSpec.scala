@@ -66,28 +66,44 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       import net.manub.embeddedkafka.Codecs._
 
       // Explicitly enable follow-strategy ...
-      reconfigureKamon("kamon.instrumentation.kafka.client.follow-strategy = true")
+      reconfigureKamon(
+        """
+          |kamon.instrumentation.kafka.client.follow-strategy = true
+          |kamon.instrumentation.kafka.streams.trace-nodes = true
+          |""".stripMargin)
       // ... and ensure that it is active
       Client.followStrategy shouldBe true
+      Streams.traceNodes shouldBe true
 
       val streamAppId = "SimpleStream_AppId"
       runStreams(Seq(inTopic, outTopic), buildExampleTopology(), extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
-        publishToKafka(inTopic, "hello", "world!")
-
+        publishToKafka(inTopic, "hello1", "world1!")
+        publishToKafka(inTopic, "hello2", "world2!")
 
         withConsumer[String, String, Unit] { consumer =>
           val consumedMessages: Stream[(String, String)] = consumer.consumeLazily(outTopic)
-          consumedMessages.take(1) should be(Seq("hello" -> "world!"))
+          consumedMessages.take(2).toList should contain allOf(
+              "hello1" -> "world1!",
+              "hello2" -> "world2!"
+            )
         }
 
         awaitReportedSpans()
 
-        var streamTraceId =
-          assertReportedSpan(_.tags.get(plain("kafka.applicationId")) == streamAppId){ span => span.trace.id.string }
+        val streamTraceIds = reportedSpans.filter(_.tags.get(plain("kafka.applicationId")) == streamAppId).map(_.trace.id.string).distinct
+        streamTraceIds should have size 2
 
-        val traceOps = reportedSpans.filter(_.trace.id.string == streamTraceId).map(_.operationName)
-        traceOps should have size 8
-        traceOps should contain allOf("consumed-record", streamAppId, "KSTREAM-FILTER-0000000001", "KSTREAM-PEEK-0000000002", "KSTREAM-MAPVALUES-0000000003", "send")
+        streamTraceIds.foreach{traceId =>
+          val traceOps = reportedSpans.filter(_.trace.id.string == traceId).map(_.operationName)
+          traceOps should have size 10 // in addition to the once below it should contain the initial `send` and the final `consumed-record` from the test setip
+          traceOps should contain allOf("consumed-record", streamAppId, "KSTREAM-SOURCE-0000000000", "KSTREAM-FILTER-0000000001", "KSTREAM-PEEK-0000000002", "KSTREAM-MAPVALUES-0000000003", "KSTREAM-SINK-0000000004", "send")
+        }
+
+        val streamSpans = reportedSpans.filter(s => s.operationName == streamAppId && s.trace.id.string == streamTraceIds.head)
+        streamSpans should have size 1
+        streamSpans.head.metricTags.get(plain("kafka.source.topic")) shouldBe inTopic
+        streamSpans.head.tags.get(plainLong("kafka.source.partition")) shouldBe 0
+        streamSpans.head.tags.get(plainLong("kafka.source.offset")).toLong should be > 0L
 
         DotFileGenerator.dumpToDotFile("stream-simple", reportedSpans)
       }
@@ -158,43 +174,6 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         reportedSpans.filter(_.tags.get(plain("kafka.applicationId")) == streamAppId).map(_.trace.id.string) should have size 3
 
         DotFileGenerator.dumpToDotFile("stream-3-events", reportedSpans)
-      }
-    }
-
-    "Multiple messages in a flow - WITH node tracing" in new SpanReportingTestScope(reporter) with ConfigSupport {
-
-      import net.manub.embeddedkafka.Codecs._
-
-      // Explicitly enable follow-strategy and node tracing ....
-      reconfigureKamon("""
-          |kamon.instrumentation.kafka.client.follow-strategy = true
-          |kamon.instrumentation.kafka.streams.trace-nodes = true
-        """.stripMargin)
-
-      // ... and ensure that it is active
-      Client.followStrategy shouldBe true
-      Streams.traceNodes shouldBe true
-
-      val streamAppId = "SimpleStream_AppId"
-      runStreams(Seq(inTopic, outTopic), buildExampleTopology(assertContextNotEmpty = true), extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
-        publishToKafka(inTopic, "k1", "v1")
-        publishToKafka(inTopic, "k2", "v2")
-        publishToKafka(inTopic, "k3", "v3")
-
-        withConsumer[String, String, Unit] { consumer =>
-          val consumedMessages: Stream[(String, String)] = consumer.consumeLazily(outTopic)
-          consumedMessages.take(3) should be(Seq("k1" -> "v1", "k2" -> "v2", "k3" -> "v3"))
-        }
-
-        awaitReportedSpans()
-
-        // expect 3 different traceIds - one for each event pushed
-        val traceIds = reportedSpans.filter(_.tags.get(plain("kafka.applicationId")) == streamAppId).map(_.trace.id.string)
-        traceIds should have size 3
-
-        traceIds.foreach(tId => reportedSpans.filter(_.trace.id.string == tId) should have size 8)
-
-        DotFileGenerator.dumpToDotFile("stream-3-events-with-nodes-WIP", reportedSpans)
       }
     }
 
@@ -389,6 +368,10 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
           streams.close()
         }
       }
+    }
+
+    "report exceptions as error tags on the span" ignore {
+
     }
 
   }

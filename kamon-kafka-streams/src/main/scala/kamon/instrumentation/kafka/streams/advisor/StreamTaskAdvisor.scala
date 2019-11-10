@@ -42,9 +42,9 @@ object StreamTaskUpdateProcessContextAdvisor {
     if(Kamon.filter(Streams.StreamsTraceFilterName).accept(applicationId)) {
       val maybeParentSpan = record.consumerRecord.map(_.context.get(Span.Key))
       val spanBuilder = Kamon.consumerSpanBuilder(applicationId, "kafka.stream")
-        .tagMetrics("kafka.topic", record.topic())
-        .tag("kafka.partition", record.partition())
-        .tag("kafka.offset", record.offset())
+        .tagMetrics("kafka.source.topic", record.topic())
+        .tag("kafka.source.partition", record.partition())
+        .tag("kafka.source.offset", record.offset())
       maybeParentSpan.foreach(parentSpan => spanBuilder.asChildOf(parentSpan))
 
       val span = spanBuilder.start()

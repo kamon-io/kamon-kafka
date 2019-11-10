@@ -44,9 +44,13 @@ class StreamsInstrumentation extends InstrumentationBuilder {
     * Also provide a bridge to access the internal processor context which carries
     * the Kamon context.
     */
-  onSubTypesOf("org.apache.kafka.streams.processor.AbstractProcessor")
-    .advise(method("process"), classOf[ProcessorProcessMethodAdvisor])
-    .bridge(classOf[ProcessorContextBridge])
+  onSubTypesOf("org.apache.kafka.streams.processor.internals.ProcessorNode")
+    .advise(method("init"), classOf[ProcessorNodeInitMethodAdvisor])
+    .advise(method("process"), classOf[ProcessorNodeProcessMethodAdvisor])
+    .advise(method("close"), classOf[ProcessorNodeCloseMethodAdvisor])
+    .mixin(classOf[HasContext.VolatileMixin])
+    .mixin(classOf[HasProcessorContextWithKamonContext.Mixin])
+//    .bridge(classOf[ProcessorContextBridge])
 
   /**
     * Instruments org.apache.kafka.streams.processor.internals.StreamTask::updateProcessorContext
