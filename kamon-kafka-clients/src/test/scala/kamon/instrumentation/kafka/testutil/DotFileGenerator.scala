@@ -147,7 +147,7 @@ object DotFileGenerator {
     }
 
     def createLinkEdges = {
-      spans.flatMap(sTarget => sTarget.links.map(sSource => s""" "${sSource.spanId.string}" -> "${sTarget.id.string}" [style="dashed"];""")).mkString("\n")
+      spans.flatMap(sTarget => sTarget.links.filter(_.spanId.string != "").map(sSource => s""" "${sSource.spanId.string}" -> "${sTarget.id.string}" [style="dashed"];""")).mkString("\n")
     }
 
     def createSubgraphsPerTrace: String = {

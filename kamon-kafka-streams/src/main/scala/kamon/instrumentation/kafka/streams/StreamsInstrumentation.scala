@@ -50,7 +50,12 @@ class StreamsInstrumentation extends InstrumentationBuilder {
     .advise(method("close"), classOf[ProcessorNodeCloseMethodAdvisor])
     .mixin(classOf[HasContext.VolatileMixin])
     .mixin(classOf[HasProcessorContextWithKamonContext.Mixin])
-//    .bridge(classOf[ProcessorContextBridge])
+
+  onType("org.apache.kafka.streams.processor.internals.SinkNode")
+    .advise(method("process"), classOf[SinkNodeProcessMethodAdvisor])
+
+  onType("org.apache.kafka.streams.processor.internals.SourceNode")
+    .advise(method("process"), classOf[SourceNodeProcessMethodAdvisor])
 
   /**
     * Instruments org.apache.kafka.streams.processor.internals.StreamTask::updateProcessorContext

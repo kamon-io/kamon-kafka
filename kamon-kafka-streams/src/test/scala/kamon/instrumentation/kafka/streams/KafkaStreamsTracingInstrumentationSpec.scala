@@ -75,7 +75,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       Streams.traceNodes shouldBe true
 
       val streamAppId = "SimpleStream_AppId"
-      runStreams(Seq(inTopic, outTopic), buildExampleTopology(assertContextNotEmpty = true), extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
+      runStreams(Seq(inTopic, outTopic), buildExampleTopology(), extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
         publishToKafka(inTopic, "hello1", "world1!")
         publishToKafka(inTopic, "hello2", "world2!")
 
@@ -92,17 +92,42 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         val streamTraceIds = reportedSpans.filter(_.tags.get(plain("kafka.applicationId")) == streamAppId).map(_.trace.id.string).distinct
         streamTraceIds should have size 2
 
+        // Verify existence and setup of node spans
         streamTraceIds.foreach{traceId =>
-          val traceOps = reportedSpans.filter(_.trace.id.string == traceId).map(_.operationName)
-          traceOps should have size 10 // in addition to the once below it should contain the initial `send` and the final `consumed-record` from the test setip
-          traceOps should contain allOf("consumed-record", streamAppId, "KSTREAM-SOURCE-0000000000", "KSTREAM-FILTER-0000000001", "KSTREAM-PEEK-0000000002", "KSTREAM-MAPVALUES-0000000003", "KSTREAM-SINK-0000000004", "send")
+          assertReportedSpans(s => s.trace.id.string == traceId){ spans =>
+            val allOpsInTrace = spans.map(_.operationName)
+            allOpsInTrace should have size 10 // in addition to the once below it should contain the initial `send` and the final `consumed-record` from the test setip
+            allOpsInTrace should contain allOf("consumed-record", streamAppId, "KSTREAM-SOURCE-0000000000", "KSTREAM-FILTER-0000000001", "KSTREAM-PEEK-0000000002", "KSTREAM-MAPVALUES-0000000003", "KSTREAM-SINK-0000000004", "send")
+          }
         }
 
-        val streamSpans = reportedSpans.filter(s => s.operationName == streamAppId && s.trace.id.string == streamTraceIds.head)
-        streamSpans should have size 1
-        streamSpans.head.metricTags.get(plain("kafka.source.topic")) shouldBe inTopic
-        streamSpans.head.tags.get(plainLong("kafka.source.partition")) shouldBe 0
-        streamSpans.head.tags.get(plainLong("kafka.source.offset")).toLong should be > 0L
+        // Verify node span and their linkage
+        assertReportedSpan(s => s.operationName == "KSTREAM-SOURCE-0000000000" && s.trace.id.string == streamTraceIds.head) { sourceSpan =>
+          sourceSpan.links shouldBe empty
+          assertReportedSpan(s => s.operationName == "KSTREAM-FILTER-0000000001" && s.trace.id.string == streamTraceIds.head) { filterSpan =>
+            filterSpan.links.filter(l => l.spanId == sourceSpan.id) should have size 1
+          }
+        }
+
+        // Verify tagging of sink node
+        assertReportedSpan(s => s.operationName == "KSTREAM-SINK-0000000004" && s.trace.id.string == streamTraceIds.head) { span =>
+          span.metricTags.get(plain("kafka.sink.topic")) shouldBe outTopic
+          span.metricTags.get(plain("kafka.sink.key")).take(5) shouldBe "hello"
+        }
+
+        // Verify tagging of source node
+        assertReportedSpan(s => s.operationName == "KSTREAM-SOURCE-0000000000" && s.trace.id.string == streamTraceIds.head) { span =>
+          span.metricTags.get(plain("kafka.source.topic")) shouldBe inTopic
+          span.metricTags.get(plain("kafka.source.key")).take(5) shouldBe "hello"
+        }
+
+        // Verify stream span
+        assertReportedSpan(s => s.operationName == streamAppId && s.trace.id.string == streamTraceIds.head){ span =>
+          span.metricTags.get(plain("kafka.source.topic")) shouldBe inTopic
+          span.metricTags.get(plain("kafka.sink.topic")) shouldBe outTopic
+          span.tags.get(plainLong("kafka.source.partition")) shouldBe 0
+          span.tags.get(plainLong("kafka.source.offset")).toLong should be > 0L
+        }
 
         DotFileGenerator.dumpToDotFile("stream-simple", reportedSpans)
       }
@@ -157,7 +182,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       Streams.traceNodes shouldBe false
 
       val streamAppId = "SimpleStream_AppId"
-      runStreams(Seq(inTopic, outTopic), buildExampleTopology(assertContextNotEmpty = true), extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
+      runStreams(Seq(inTopic, outTopic), buildExampleTopology(), extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
         publishToKafka(inTopic, "k1", "v1")
         publishToKafka(inTopic, "k2", "v2")
         publishToKafka(inTopic, "k3", "v3")
@@ -270,14 +295,14 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
     "multiple streams - filtered" in new SpanReportingTestScope(reporter) with ConfigSupport with StreamsTestSupport {
 
-      val stream1AppId = "SimpleStream_AppId_1"
-      val stream2AppId = "SimpleStream_AppId_2"
+      val notIncludedStreamId = "SimpleStream_AppId_1"
+      val includeStreamId = "SimpleStream_AppId_2"
 
       import net.manub.embeddedkafka.Codecs._
 
       // Explicitly set includes ....
       reconfigureKamon(s"""
-        |kamon.instrumentation.kafka.streams.trace.includes = [ "$stream2AppId"]
+        |kamon.instrumentation.kafka.streams.trace.includes = [ "$includeStreamId"]
         """.stripMargin)
 
       disableNodeTracing()
@@ -286,15 +311,15 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         Seq(inTopic, outTopic).foreach(topic => createCustomTopic(topic))
 
 
-        val streams1 = new KafkaStreams(
-          buildExampleTopology(),
-          map2Properties(streamsConfig.config(stream1AppId, Map.empty)))
-        streams1.start()
+        val notIncludedStream = new KafkaStreams(
+          buildExampleTopology(assertContextNotEmpty = false),
+          map2Properties(streamsConfig.config(notIncludedStreamId, Map.empty)))
+        notIncludedStream.start()
 
-        val streams2 = new KafkaStreams(
+        val includedStream = new KafkaStreams(
           buildExampleTopology(),
-          map2Properties(streamsConfig.config(stream2AppId, Map.empty)))
-        streams2.start()
+          map2Properties(streamsConfig.config(includeStreamId, Map.empty)))
+        includedStream.start()
 
         try {
 
@@ -308,15 +333,15 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
           }
 
           awaitReportedSpans()
-          assertNumSpansForOperation(stream1AppId, 0)
-          assertNumSpansForOperation(stream2AppId, 3)
+          assertNumSpansForOperation(notIncludedStreamId, 0)
+          assertNumSpansForOperation(includeStreamId, 3)
           assertNumSpansForOperation("consumed-record", 12)
 
           DotFileGenerator.dumpToDotFile("stream-multiple-streams-no-nodes", reportedSpans)
 
         } finally {
-          streams1.close()
-          streams2.close()
+          notIncludedStream.close()
+          includedStream.close()
         }
       }
     }
@@ -408,13 +433,13 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
   }
 
-  private def buildExampleTopology(in: String = inTopic, out: String = outTopic, assertContextNotEmpty: Boolean = false, raiseException: Boolean = false) = {
+  private def buildExampleTopology(in: String = inTopic, out: String = outTopic, assertContextNotEmpty: Boolean = true, raiseException: Boolean = false) = {
     import scala.ImplicitConversions._
     import org.apache.kafka.streams.scala.Serdes.String
 
     val streamBuilder = new scala.StreamsBuilder
     streamBuilder.stream[String, String](in)
-      .filter((k, v) => true)
+      .filter{(k, v) => true }
       .peek { (k, v) =>
         if (assertContextNotEmpty && Kamon.currentContext() == Context.Empty) fail("Kamon.currentContext() == Context.Empty !!")
         if (raiseException) throw new RuntimeException("Peng!")

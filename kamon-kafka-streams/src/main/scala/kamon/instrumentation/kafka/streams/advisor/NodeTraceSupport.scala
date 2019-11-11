@@ -15,10 +15,17 @@
  */
 package kamon.instrumentation.kafka.streams.advisor
 
-import kanela.agent.api.instrumentation.bridge.Bridge
-import org.apache.kafka.streams.processor.ProcessorContext
+import kamon.Kamon
+import kamon.instrumentation.context.HasContext
+import kamon.instrumentation.kafka.streams.Streams
+import org.apache.kafka.streams.processor.internals.InternalProcessorContext
 
-trait ProcessorContextBridge {
-  @Bridge("org.apache.kafka.streams.processor.ProcessorContext context()")
-  def contextBridge(): ProcessorContext
+trait NodeTraceSupport {
+  def extractProcessorContext(x: HasProcessorContextWithKamonContext): InternalProcessorContext with HasContext = {
+    assert(x.processorContext.nonEmpty, "Expect processor context to be available!")
+    x.processorContext.get
+  }
+
+  def shouldTrace(processorContext: InternalProcessorContext with  HasContext): Boolean =
+    Streams.traceNodes && Kamon.filter(Streams.StreamsTraceFilterName).accept(processorContext.applicationId())
 }

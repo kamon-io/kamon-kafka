@@ -15,26 +15,13 @@
  */
 package kamon.instrumentation.kafka.streams.advisor
 
-import java.util.logging.Logger
-
 import kamon.Kamon
 import kamon.context.Context
 import kamon.context.Storage.Scope
 import kamon.instrumentation.context.HasContext
-import kamon.instrumentation.kafka.streams.Streams
 import kamon.trace.Span
 import kanela.agent.libs.net.bytebuddy.asm.Advice
 import org.apache.kafka.streams.processor.internals.{InternalProcessorContext, ProcessorNode}
-
-trait NodeTraceSupport {
-  def extractProcessorContext(x: HasProcessorContextWithKamonContext): InternalProcessorContext with HasContext = {
-    assert(x.processorContext.nonEmpty, "Expect processor context to be available!")
-    x.processorContext.get
-  }
-
-  def shouldTrace(processorContext: InternalProcessorContext with  HasContext): Boolean =
-    Streams.traceNodes && Kamon.filter(Streams.StreamsTraceFilterName).accept(processorContext.applicationId())
-}
 
 /**
   * org.apache.kafka.streams.processor.internals.ProcessorNode
@@ -42,8 +29,6 @@ trait NodeTraceSupport {
   */
 class ProcessorNodeInitMethodAdvisor
 object ProcessorNodeInitMethodAdvisor extends NodeTraceSupport {
-
-  private val logger = Logger.getLogger(getClass.getName)
 
   @Advice.OnMethodEnter
   def onEnter(@Advice.This node: ProcessorNode[_,_] with HasProcessorContextWithKamonContext with HasContext, @Advice.Argument(0) ctx: InternalProcessorContext with HasContext): Unit = {
@@ -62,17 +47,21 @@ object ProcessorNodeProcessMethodAdvisor extends NodeTraceSupport {
 
   @Advice.OnMethodEnter
   def onEnter(@Advice.This node: ProcessorNode[_,_] with HasProcessorContextWithKamonContext with HasContext): Scope = {
-
     val pCtx = extractProcessorContext(node)
-
+    val previousSpan = Kamon.currentSpan()
     // Determine the context to use as `currentContext` during the execution of `process`
     val newCurrentContext = if (shouldTrace(pCtx)) {
       // create a new span for this node
-      val span = Kamon.spanBuilder(pCtx.currentNode().name())
+      val spanBuilder = Kamon.spanBuilder(pCtx.currentNode().name())
         .asChildOf(pCtx.context.get(Span.Key))
         .tagMetrics("span.kind", "processor")
         .tagMetrics("component", "kafka.stream.node")
-        .start()
+
+      // link to the "previous" node of the stream topology - if there is one
+      if(previousSpan != Span.Empty)
+        spanBuilder.link(previousSpan, Span.Link.Kind.FollowsFrom)
+
+      val span = spanBuilder.start()
       val nodeCtx = Context.of(Span.Key, span)
       node.setContext(nodeCtx)
       nodeCtx
@@ -86,6 +75,7 @@ object ProcessorNodeProcessMethodAdvisor extends NodeTraceSupport {
 
   @Advice.OnMethodExit(onThrowable = classOf[Throwable]) // todo: add "suppress = classOf[Throwable]" ?
   def onExit(@Advice.This node: ProcessorNode[_,_] with HasProcessorContextWithKamonContext with HasContext, @Advice.Enter scope: Scope, @Advice.Thrown throwable: Throwable): Unit = {
+
     val pCtx = extractProcessorContext(node)
 
     if (shouldTrace(pCtx)) {
