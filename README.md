@@ -8,25 +8,26 @@ Kafka Integration   ![Build Status](https://travis-ci.org/kamon-io/kamon-kafka.s
 The <b>kamon-kafka</b> module requires you to start your application using the Kanela Agent. Kamon will warn you
 at startup if you failed to do so.
 
+
 The bytecode instrumentation provided by the `kamon-kafka` module hooks into the kafka clients to automatically
 gather Metrics and start and finish Spans for requests that are issued within a trace. This translates into you having metrics about how
 the requests you are doing are behaving.
 
 ### Getting Started
 
-Kamon Cassandra module is currently available for Scala 2.11 and 2.12.
+Kamon Kafka module is currently available for Scala 2.11 and 2.12.
 
 Supported releases and dependencies are shown below.
 
 | kamon-kafka  | status | jdk  | scala            
 |:------:|:------:|:----:|------------------
-|  1.0.0 | stable | 1.8+ | 2.11, 2.12  
+|  2.0.0 | snapshot | 1.8+ | 2.11, 2.12  
 
 To get started with SBT, simply add the following to your `build.sbt`
 file:
 
 ```scala
-libraryDependencies += "io.kamon" %% "kamon-kafka" % "1.0.0"
+libraryDependencies += "io.kamon" %% "kamon-kafka" % "2.0.0-SNAPSHOT"
 ```
 
 
