@@ -25,8 +25,17 @@ class RecordCollectorSendAdvisor
 object RecordCollectorSendAdvisor {
   @Advice.OnMethodEnter
   def onEnter(@Advice.This collector: RecordCollector with HasContext): Scope = {
-    Kamon.storeContext(collector.context)
+
+    // Only set the context to the stream span's context IF none is present!
+    // The node instrumentation (if active) would have set it properly
+    if (Kamon.currentContext().isEmpty())
+      // Use stream's context
+      Kamon.storeContext(collector.context)
+    else
+      // Use existing node's context
+      Kamon.storeContext(Kamon.currentContext())
   }
+
   @Advice.OnMethodExit
   def onExit(@Advice.This collector: RecordCollector with HasContext,
             @Advice.Enter scope: Scope): Unit = {

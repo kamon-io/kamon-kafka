@@ -46,7 +46,7 @@ class ProcessorNodeProcessMethodAdvisor
 object ProcessorNodeProcessMethodAdvisor extends NodeTraceSupport {
 
   @Advice.OnMethodEnter
-  def onEnter(@Advice.This node: ProcessorNode[_,_] with HasProcessorContextWithKamonContext with HasContext): Scope = {
+  def onEnter[K,V](@Advice.This node: ProcessorNode[K,V] with HasProcessorContextWithKamonContext with HasContext, @Advice.Argument(0) key: K, @Advice.Argument(1) value: V): Scope = {
     val pCtx = extractProcessorContext(node)
     val previousSpan = Kamon.currentSpan()
     // Determine the context to use as `currentContext` during the execution of `process`

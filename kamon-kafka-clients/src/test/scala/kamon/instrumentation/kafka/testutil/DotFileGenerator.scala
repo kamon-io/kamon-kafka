@@ -90,10 +90,12 @@ object DotFileGenerator {
         (span.tags.iterator.map(t => t.key -> Tag.unwrapValue(t).toString) ++
         span.metricTags.iterator.map(t => t.key -> Tag.unwrapValue(t).toString)).toList
       } else {
-        List(
+        val optionalMetricTags = List("kafka.topic", "kafka.sink.topic", "kafka.source.topic")
+        val commonTags = List(
           "span.kind" -> span.metricTags.get(plain("span.kind")),
           "hasError" -> span.hasError.toString
         )
+        commonTags ++ optionalMetricTags.map(t => t -> Option(span.metricTags.get(plain(t)))).filter(_._2.isDefined).map(t => (t._1, t._2.get))
       }
     }
     def getLabel(s: Span.Finished) = {
