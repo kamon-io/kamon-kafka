@@ -24,8 +24,6 @@ val kafkaStreamsScala   = "org.apache.kafka"    %% "kafka-streams-scala"	       
 val kafkaTest           = "io.github.embeddedkafka" %% "embedded-kafka"               % "2.3.0"
 val kafkaStreamTest     = "io.github.embeddedkafka" %% "embedded-kafka-streams"       % "2.3.0"
 
-val lombok              = "org.projectlombok"   % "lombok"                            % "1.18.0" //1.18.8?
-
 
 lazy val root = (project in file("."))
   .settings(noPublishing: _*)
@@ -43,7 +41,6 @@ lazy val kafkaClients = (project in file("kamon-kafka-clients"))
   .settings(
       libraryDependencies ++=
         compileScope(kamonCore, kafkaClient, scalaExtension) ++
-        providedScope(lombok) ++
         testScope(kamonTestkit, scalatest, slf4jApi, logbackClassic, kafkaTest))
 
 lazy val kafkaStream = (project in file("kamon-kafka-streams"))
@@ -59,5 +56,4 @@ lazy val kafkaStream = (project in file("kamon-kafka-streams"))
   .settings(
         libraryDependencies ++=
           compileScope(kamonCore, kafkaStreams, kafkaStreamsScala, scalaExtension) ++
-            providedScope(lombok) ++
             testScope(kamonTestkit, scalatest, slf4jApi, logbackClassic, kafkaStreamTest))
