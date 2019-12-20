@@ -16,7 +16,6 @@ package kamon.instrumentation.kafka.client.advisor;
 
 import kamon.Kamon;
 import kamon.context.Context;
-import kamon.context.Storage;
 import kamon.instrumentation.context.HasContext;
 import kamon.instrumentation.kafka.client.Client;
 import kamon.instrumentation.kafka.client.ContextSerializationHelper;
@@ -58,12 +57,6 @@ public class SendMethodAdvisor {
         return span;
     }
 
-    // TODO: Span should be closed here only in case of an exception
-    //even if send is async without callback, we are still providing one to close the span
-    //Will throw if producer is closed
-    //Context is not needed for send
-
-    /*Close span in case of queuing error*/
     @Advice.OnMethodExit(onThrowable = Throwable.class, suppress = Throwable.class)
     public static void onExit(@Advice.Enter Span sendingSpan,
                               @Advice.Thrown final Throwable throwable) {
