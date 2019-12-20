@@ -14,7 +14,11 @@ object RecordProcessor {
 
   import scala.collection.JavaConverters._
 
-  /*TODO docs*/
+  /*Produces poll span (`operation=poll`) per each poll invocation which is then linked to per-record spans.
+  * For each polled record, new consumer span (`operation=consumed-record`) is created as a child or
+  * linked to it's bundled span (if any is present). Context (either new or inbound) containing consumer
+  * span is then propagated with the record via `HasContext` mixin
+  * */
   def process[V, K](startTime: Instant, clientId: String, groupId: String, records: ConsumerRecords[K, V]): ConsumerRecords[K, V] = {
 
     import Client._
@@ -38,7 +42,6 @@ object RecordProcessor {
 
         val spanBuilder = Kamon.consumerSpanBuilder("consumed-record", "kafka.consumer")
           .tagMetrics("kafka.topic", record.topic())
-          .tagMetrics("kafka.clientId", clientId) //TODO not sure about these two
           .tagMetrics("kafka.groupId", groupId)
           .tag("kafka.partition", record.partition())
           .tag("kafka.offset", record.offset)
