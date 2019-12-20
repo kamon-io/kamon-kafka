@@ -3,12 +3,11 @@ package kamon.instrumentation.kafka.client
 import com.typesafe.config.Config
 import kamon.Kamon
 import kamon.context.Context
-import kamon.instrumentation.context
 import kamon.instrumentation.context.HasContext
 import kamon.trace.Span
 import org.apache.kafka.clients.consumer.ConsumerRecord
 
-import scala.util.{Failure, Success, Try}
+import scala.util.Try
 
 object Client {
 
