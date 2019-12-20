@@ -29,7 +29,7 @@ class StreamsInstrumentation extends InstrumentationBuilder {
     */
   onSubTypesOf("org.apache.kafka.streams.processor.internals.StampedRecord")
     .mixin(classOf[Mixin])
-    .advise(isConstructor, classOf[StampedRecordAdvisor])
+    .advise(isConstructor, classOf[StampedRecordAdvisor]) //TODO no instrumentation neccessary, stampedRecord is Stamped<ConsumerRecord>, cast and access public member?
 
   /**
     * This propagates the span from the original "raw" record to the "deserialized" record
@@ -44,8 +44,8 @@ class StreamsInstrumentation extends InstrumentationBuilder {
     * Also provide a bridge to access the internal processor context which carries
     * the Kamon context.
     */
-  onSubTypesOf("org.apache.kafka.streams.processor.internals.ProcessorNode")
-    .advise(method("init"), classOf[ProcessorNodeInitMethodAdvisor])
+  onSubTypesOf("org.apache.kafka.streams.processor.internals.ProcessorNode")   //TODO why processorNode even, why not just processor?
+    .advise(method("init"), classOf[ProcessorNodeInitMethodAdvisor]) //TODO Node is inited with processorContext which carries kamon context, why
     .advise(method("process"), classOf[ProcessorNodeProcessMethodAdvisor])
     .advise(method("close"), classOf[ProcessorNodeCloseMethodAdvisor])
     .mixin(classOf[HasContext.VolatileMixin])
@@ -64,7 +64,7 @@ class StreamsInstrumentation extends InstrumentationBuilder {
     * ProcessMethodAdvisor: this will finish the stream span
     *
     */
-  onType("org.apache.kafka.streams.processor.internals.StreamTask")
+  onType("org.apache.kafka.streams.processor.internals.StreamTask") //TODO is this supposed to be parent span for all stream processing stage spans
     .advise(method("updateProcessorContext"), classOf[StreamTaskUpdateProcessContextAdvisor])
     .advise(method("process"), classOf[StreamTaskProcessMethodAdvisor])
 
@@ -72,14 +72,14 @@ class StreamsInstrumentation extends InstrumentationBuilder {
     * Keep the stream's Kamon context on the (Abstract)ProcessorContext so that it is available
     * to all participants of this stream's processing.
     */
-  onSubTypesOf("org.apache.kafka.streams.processor.internals.AbstractProcessorContext")
+  onSubTypesOf("org.apache.kafka.streams.processor.internals.AbstractProcessorContext") //TODO why would processor context need kamon context, like current message processing
     .mixin(classOf[HasContext.VolatileMixin])
 
   /**
     * Propagate the Kamon context from ProcessorContext to the RecordCollector.
     */
   onSubTypesOf("org.apache.kafka.streams.processor.internals.RecordCollector$Supplier")
-    .advise(method("recordCollector"), classOf[RecordCollectorSupplierAdvisor])
+    .advise(method("recordCollector"), classOf[RecordCollectorSupplierAdvisor]) //TODO copies context from processor, but once processor is changed, is collector left with old context?
 
   /**
     * Have the Kamon context available, store it when invoking the send method so that it can be picked

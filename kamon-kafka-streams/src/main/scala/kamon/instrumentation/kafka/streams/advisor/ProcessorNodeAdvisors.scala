@@ -23,6 +23,7 @@ import kamon.trace.Span
 import kanela.agent.libs.net.bytebuddy.asm.Advice
 import org.apache.kafka.streams.processor.internals.{InternalProcessorContext, ProcessorNode}
 
+
 /**
   * org.apache.kafka.streams.processor.internals.ProcessorNode
   * public void init (final InternalProcessorContext context)
@@ -48,7 +49,7 @@ object ProcessorNodeProcessMethodAdvisor extends NodeTraceSupport {
   @Advice.OnMethodEnter
   def onEnter[K,V](@Advice.This node: ProcessorNode[K,V] with HasProcessorContextWithKamonContext with HasContext, @Advice.Argument(0) key: K, @Advice.Argument(1) value: V): Scope = {
     val pCtx = extractProcessorContext(node)
-    val previousSpan = Kamon.currentSpan()
+    val previousSpan = Kamon.currentSpan() //TODO this can at this point be whatever?
     // Determine the context to use as `currentContext` during the execution of `process`
     val newCurrentContext = if (shouldTrace(pCtx)) {
       // create a new span for this node
@@ -62,7 +63,7 @@ object ProcessorNodeProcessMethodAdvisor extends NodeTraceSupport {
         spanBuilder.link(previousSpan, Span.Link.Kind.FollowsFrom)
 
       val span = spanBuilder.start()
-      val nodeCtx = Context.of(Span.Key, span)
+      val nodeCtx = Context.of(Span.Key, span) //TODO again, just span, lost rest of the context
       node.setContext(nodeCtx)
       nodeCtx
     } else
