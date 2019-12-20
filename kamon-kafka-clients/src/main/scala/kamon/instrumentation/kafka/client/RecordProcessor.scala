@@ -36,7 +36,6 @@ object RecordProcessor {
           ContextSerializationHelper.fromByteArray(h.value())
         }.getOrElse(Context.Empty)
 
-        //TODO maybe separate metrics (counters, etc..)
         val spanBuilder = Kamon.consumerSpanBuilder("consumed-record", "kafka.consumer")
           .tagMetrics("kafka.topic", record.topic())
           .tagMetrics("kafka.clientId", clientId) //TODO not sure about these two
