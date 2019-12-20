@@ -3,6 +3,7 @@ package kamon.instrumentation.kafka.client
 import com.typesafe.config.Config
 import kamon.Kamon
 import kamon.context.Context
+import kamon.instrumentation.context
 import kamon.instrumentation.context.HasContext
 import kamon.trace.Span
 import org.apache.kafka.clients.consumer.ConsumerRecord
@@ -42,10 +43,10 @@ object Client {
     * Syntactical sugar for Scala
     * @param cr ConsumerRecord[_,_]
     */
-  implicit class Syntax(cr: ConsumerRecord[_, _] with HasContext) {
-    def context: Context = cr.context
-    def span: Span = cr.context.get(Span.Key)
-    protected[kafka] def setContext(s: Context): Unit = cr.setContext(s)
+  implicit class Syntax(cr: ConsumerRecord[_, _]) {
+    def context: Context = cr.asInstanceOf[HasContext].context
+    def span: Span = cr.asInstanceOf[HasContext].context.get(Span.Key)
+    protected[kafka] def setContext(s: Context): Unit = cr.asInstanceOf[HasContext].setContext(s)
   }
 
 }
