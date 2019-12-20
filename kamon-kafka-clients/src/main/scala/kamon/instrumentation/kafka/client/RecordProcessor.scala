@@ -49,7 +49,7 @@ object RecordProcessor {
           .tag("kafka.timestampType", record.timestampType.name)
 
         // Key could be optional ... see tests
-        Option(record.key()).foreach(k => spanBuilder.tag("kafka.key", record.key().toString)) //TODO .toString is not wellbehaved here
+        Option(record.key()).foreach(k => spanBuilder.tag("kafka.key", record.key().toString)) //TODO unsure of toString behaviour here
 
         if (Client.followStrategy)
           spanBuilder.asChildOf(sendingContext.get(Span.Key))
