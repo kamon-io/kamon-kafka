@@ -31,15 +31,16 @@ import org.apache.kafka.clients.producer.ProducerRecord;
  */
 public class SendMethodAdvisor {
     @Advice.OnMethodEnter(suppress = Throwable.class)
-    public static void onEnter(@Advice.Argument(value = 0, readOnly = false) ProducerRecord record,
+    public static Span onEnter(@Advice.Argument(value = 0, readOnly = false) ProducerRecord record,
                                @Advice.Argument(value = 1, readOnly = false) Callback callback,
-                               @Advice.Local("scope") Storage.Scope scope,
                                @Advice.FieldValue("clientId") String clientId) {
         Context recordContext = ((HasContext) record).context();
 
-        String topic = record.topic() == null ? Client.Keys.Null() : record.topic();
-        String partition = record.partition() == null ? Client.Keys.Null() : record.partition().toString();
-        String key = record.key() == null ? Client.Keys.Null() : record.key().toString();
+        String nullKey = Client.Keys$.MODULE$.Null();
+
+        String topic = record.topic() == null ? nullKey : record.topic();
+        String partition = record.partition() == null ? nullKey : record.partition().toString();
+        String key = record.key() == null ? nullKey : record.key().toString();
 
         Span span = Kamon.producerSpanBuilder("send", "kafka.producer")
                 .asChildOf(recordContext.get(Span.Key()))
@@ -52,18 +53,25 @@ public class SendMethodAdvisor {
         Context ctx  = recordContext.withEntry(Span.Key(), span);
         record.headers().add("kamon-context", ContextSerializationHelper.toByteArray(ctx));
 
-        scope = Kamon.storeContext(ctx);
-        callback = new ProducerCallback(callback, scope);
+        callback = new ProducerCallback(callback, span);
+
+        return span;
     }
 
-    // TODO: Isn't this taken care of in the callback? Or is this for the exception case?
+    // TODO: Span should be closed here only in case of an exception
+    //even if send is async without callback, we are still providing one to close the span
+    //Will throw if producer is closed
+    //Context is not needed for send
+
+    /*Close span in case of queuing error*/
     @Advice.OnMethodExit(onThrowable = Throwable.class, suppress = Throwable.class)
-    public static void onExit(@Advice.Local("scope") Storage.Scope scope,
+    public static void onExit(@Advice.Enter Span sendingSpan,
                               @Advice.Thrown final Throwable throwable) {
 
-        Span span = scope.context().get(Span.Key());
-        if (throwable != null) span.fail(throwable.getMessage(), throwable);
-        span.finish();
-        scope.close();
+        if (throwable != null) {
+            sendingSpan.fail(throwable.getMessage(), throwable);
+            sendingSpan.finish();
+        }
+        //Span is closed via callback
     }
 }

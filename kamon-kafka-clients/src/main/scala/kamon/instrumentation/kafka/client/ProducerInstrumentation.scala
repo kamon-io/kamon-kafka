@@ -38,14 +38,12 @@ class ProducerInstrumentation extends InstrumentationBuilder {
 /**
   * Producer Callback Wrapper
   */
-final class ProducerCallback(callback: Callback, scope: Scope) extends Callback {
+final class ProducerCallback(callback: Callback, sendingSpan: Span) extends Callback {
   override def onCompletion(metadata: RecordMetadata, exception: Exception): Unit = {
-    val span = scope.context.get(Span.Key)
-    if(exception != null) span.fail(exception.getMessage, exception)
+    if(exception != null) sendingSpan.fail(exception.getMessage, exception)
     try if(callback != null) callback.onCompletion(metadata, exception)
     finally {
-      span.finish()
-      scope.close()
+      sendingSpan.finish()
     }
   }
 }
