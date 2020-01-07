@@ -25,8 +25,8 @@ object RecordProcessor {
 
     if (!records.isEmpty) {
       val spanBuilder = Kamon.consumerSpanBuilder("poll", "kafka.consumer")
-        .tagMetrics("kafka.clientId", clientId)
-        .tagMetrics("kafka.groupId", groupId)
+        .tag("kafka.groupId", groupId)
+        .tag("kafka.clientId", clientId)
         .tag("numRecords", records.count())
         .tag("kafka.partitions", records.partitions().asScala.map(_.partition()).mkString(","))
         .tag("kafka.topics", records.partitions().asScala.map(_.topic()).toSet.mkString(","))
@@ -41,8 +41,9 @@ object RecordProcessor {
         }.getOrElse(Context.Empty)
 
         val spanBuilder = Kamon.consumerSpanBuilder("consumed-record", "kafka.consumer")
-          .tagMetrics("kafka.topic", record.topic())
-          .tagMetrics("kafka.groupId", groupId)
+          .tag("kafka.groupId", groupId)
+          .tag("kafka.clientId", clientId)
+          .tag("kafka.topic", record.topic())
           .tag("kafka.partition", record.partition())
           .tag("kafka.offset", record.offset)
           .tag("kafka.timestamp", record.timestamp())

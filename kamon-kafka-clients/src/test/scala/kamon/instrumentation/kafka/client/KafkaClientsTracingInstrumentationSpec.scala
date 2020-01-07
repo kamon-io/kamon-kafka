@@ -43,9 +43,7 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
     EmbeddedKafkaConfig.apply(customBrokerProperties = EmbeddedKafkaConfig.apply().customBrokerProperties + ("zookeeper.connection.timeout.ms" -> "20000"))
 
   implicit val patienceConfigTimeout = timeout(20 seconds)
-
   import Client._
-
   val testTopicName = "kamon.topic"
 
   "The Kafka Clients Tracing Instrumentation" should {
@@ -86,9 +84,9 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         assertReportedSpan(_.operationName == "send") { span =>
           span.metricTags.get(plain("component")) shouldBe "kafka.producer"
           span.metricTags.get(plain("span.kind")) shouldBe "producer"
-          span.metricTags.get(plain("kafka.topic")) shouldBe testTopicName
-          span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
-          span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
+          span.tags.get(plain("kafka.topic")) shouldBe testTopicName
+          span.tags.get(plain("kafka.key")) shouldBe Client.Keys.Null
+          span.tags.get(plain("kafka.partition")) shouldBe Client.Keys.Null
         }
 
         assertNoSpansReported()
@@ -110,16 +108,16 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         assertReportedSpan(_.operationName == "send") { span =>
           span.metricTags.get(plain("component")) shouldBe "kafka.producer"
           span.metricTags.get(plain("span.kind")) shouldBe "producer"
-          span.metricTags.get(plain("kafka.topic")) shouldBe testTopicName
-          span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
-          span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
+          span.tags.get(plain("kafka.topic")) shouldBe testTopicName
+          span.tags.get(plain("kafka.key")) shouldBe Client.Keys.Null
+          span.tags.get(plain("kafka.partition")) shouldBe Client.Keys.Null
         }
 
         assertReportedSpan(_.operationName == "poll") { span =>
           span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
           span.metricTags.get(plain("span.kind")) shouldBe "consumer"
-          span.metricTags.get(plain("kafka.groupId")) should not be empty
-          span.metricTags.get(plain("kafka.clientId")) should not be empty
+          span.tags.get(plain("kafka.groupId")) should not be empty
+          span.tags.get(plain("kafka.clientId")) should not be empty
           span.tags.get(plain("kafka.partitions")) should not be empty
           span.tags.get(plain("kafka.topics")) should not be empty
         }
@@ -127,9 +125,9 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         assertReportedSpan(_.operationName == "consumed-record") { span =>
           span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
           span.metricTags.get(plain("span.kind")) shouldBe "consumer"
-          span.metricTags.get(plain("kafka.topic")) shouldBe testTopicName
-          span.metricTags.get(plain("kafka.clientId")) should not be empty
-          span.metricTags.get(plain("kafka.groupId")) should not be empty
+          span.tags.get(plain("kafka.topic")) shouldBe testTopicName
+          span.tags.get(plain("kafka.clientId")) should not be empty
+          span.tags.get(plain("kafka.groupId")) should not be empty
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
           span.tags.get(plainLong("kafka.timestamp")) shouldBe consumedRecord.timestamp()
           span.tags.get(plain("kafka.timestampType")) shouldBe consumedRecord.timestampType().name
@@ -196,10 +194,10 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         assertReportedSpan(_.operationName == "send") { span =>
           span.metricTags.get(plain("span.kind")) shouldBe "producer"
           span.metricTags.get(plain("component")) shouldBe "kafka.producer"
-          span.metricTags.get(plain("kafka.clientId")) should not be empty
-          span.metricTags.get(plain("kafka.topic")) shouldBe testTopicName
-          span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
-          span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
+          span.tags.get(plain("kafka.clientId")) should not be empty
+          span.tags.get(plain("kafka.topic")) shouldBe testTopicName
+          span.tags.get(plain("kafka.key")) shouldBe Client.Keys.Null
+          span.tags.get(plain("kafka.partition")) shouldBe Client.Keys.Null
           sendingSpan = Some(span)
         }
 
@@ -211,9 +209,9 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         assertReportedSpan(_.operationName == "consumed-record") { span =>
           span.metricTags.get(plain("span.kind")) shouldBe "consumer"
           span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
-          span.metricTags.get(plain("kafka.topic")) shouldBe testTopicName
-          span.metricTags.get(plain("kafka.clientId")) should not be empty
-          span.metricTags.get(plain("kafka.groupId")) should not be empty
+          span.tags.get(plain("kafka.topic")) shouldBe testTopicName
+          span.tags.get(plain("kafka.clientId")) should not be empty
+          span.tags.get(plain("kafka.groupId")) should not be empty
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
           span.links should have size 2 // poll-span AND the original send span
           val sendinglinks = span.links.filter(_.trace.id == sendingSpan.get.trace.id)
@@ -244,10 +242,10 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         assertReportedSpan(_.operationName == "send") { span =>
           span.metricTags.get(plain("span.kind")) shouldBe "producer"
           span.metricTags.get(plain("component")) shouldBe "kafka.producer"
-          span.metricTags.get(plain("kafka.clientId")) should not be empty
-          span.metricTags.get(plain("kafka.topic")) shouldBe testTopicName
-          span.tags.get(plain("kafka.key")) shouldBe "unknown-key"
-          span.tags.get(plain("kafka.partition")) shouldBe "unknown-partition"
+          span.tags.get(plain("kafka.clientId")) should not be empty
+          span.tags.get(plain("kafka.topic")) shouldBe testTopicName
+          span.tags.get(plain("kafka.key")) shouldBe Client.Keys.Null
+          span.tags.get(plain("kafka.partition")) shouldBe Client.Keys.Null
           sendingSpan = Some(span)
         }
 
@@ -260,9 +258,9 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           span.wasDelayed shouldBe true
           span.metricTags.get(plain("span.kind")) shouldBe "consumer"
           span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
-          span.metricTags.get(plain("kafka.topic")) shouldBe testTopicName
-          span.metricTags.get(plain("kafka.clientId")) should not be empty
-          span.metricTags.get(plain("kafka.groupId")) should not be empty
+          span.tags.get(plain("kafka.topic")) shouldBe testTopicName
+          span.tags.get(plain("kafka.clientId")) should not be empty
+          span.tags.get(plain("kafka.groupId")) should not be empty
           span.tags.get(plainLong("kafka.partition")) shouldBe 0L
           span.links should have size 2
           val sendinglinks = span.links.filter(_.trace.id == sendingSpan.get.trace.id)

@@ -30,8 +30,9 @@ import org.apache.kafka.clients.producer.ProducerRecord;
  */
 public class SendMethodAdvisor {
     @Advice.OnMethodEnter(suppress = Throwable.class)
-    public static Span onEnter(@Advice.Argument(value = 0, readOnly = false) ProducerRecord record,
+    public static void onEnter(@Advice.Argument(value = 0, readOnly = false) ProducerRecord record,
                                @Advice.Argument(value = 1, readOnly = false) Callback callback,
+                               @Advice.Local("span") Span span,
                                @Advice.FieldValue("clientId") String clientId) {
         Context recordContext = ((HasContext) record).context();
 
@@ -41,7 +42,7 @@ public class SendMethodAdvisor {
         String partition = record.partition() == null ? nullKey : record.partition().toString();
         String key = record.key() == null ? nullKey : record.key().toString();
 
-        Span span = Kamon.producerSpanBuilder("send", "kafka.producer")
+        span = Kamon.producerSpanBuilder("send", "kafka.producer")
                 .asChildOf(recordContext.get(Span.Key()))
                 .tag("kafka.topic", topic)
                 .tag("kafka.clientId", clientId)
@@ -53,12 +54,10 @@ public class SendMethodAdvisor {
         record.headers().add("kamon-context", ContextSerializationHelper.toByteArray(ctx));
 
         callback = new ProducerCallback(callback, span);
-
-        return span;
     }
 
     @Advice.OnMethodExit(onThrowable = Throwable.class, suppress = Throwable.class)
-    public static void onExit(@Advice.Enter Span sendingSpan,
+    public static void onExit(@Advice.Local("span") Span sendingSpan,
                               @Advice.Thrown final Throwable throwable) {
 
         if (throwable != null) {
