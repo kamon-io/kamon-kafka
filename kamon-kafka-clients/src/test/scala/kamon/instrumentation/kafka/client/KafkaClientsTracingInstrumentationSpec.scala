@@ -17,7 +17,7 @@ package kamon.instrumentation.kafka.client
 import com.typesafe.config.ConfigFactory
 import kamon.Kamon
 import kamon.context.Context
-import kamon.instrumentation.kafka.testutil.{DotFileGenerator, SpanReportingTestScope, TestSpanReporting}
+import kamon.instrumentation.kafka.testutil.{DotFileGenerator, SpanReportingTestScope, TestSpanReporting, TestTopicScope}
 import kamon.tag.Lookups._
 import kamon.testkit.Reconfigure
 import kamon.trace.Span
@@ -34,6 +34,7 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
   with Eventually
   with SpanSugar
   with BeforeAndAfter
+  with BeforeAndAfterAll
   with EmbeddedKafka
   with Reconfigure
   with OptionValues
@@ -42,16 +43,23 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
 
   // increase zk connection timeout to avoid failing tests in "slow" environments
   implicit val defaultConfig: EmbeddedKafkaConfig =
-    EmbeddedKafkaConfig.apply(customBrokerProperties = EmbeddedKafkaConfig.apply().customBrokerProperties + ("zookeeper.connection.timeout.ms" -> "20000"))
+    EmbeddedKafkaConfig.apply(customBrokerProperties = EmbeddedKafkaConfig.apply().customBrokerProperties
+      + ("zookeeper.connection.timeout.ms" -> "20000")
+      + ("auto.create.topics.enable" -> "false")
+    )
 
   implicit val patienceConfigTimeout = timeout(20 seconds)
   import Client._
-  val testTopicName = "kamon.topic"
+
+  override def beforeAll(): Unit = EmbeddedKafka.start()(defaultConfig)
+
+  override def afterAll(): Unit = EmbeddedKafka.stop()
+
 
   "The Kafka Clients Tracing Instrumentation" should {
 
-    "create a Producer Span when publish a message" in new SpanReportingTestScope(reporter) {
-      withRunningKafka {
+    "create a Producer Span when publish a message" in new SpanReportingTestScope(reporter) with TestTopicScope {
+
 
         publishStringMessageToKafka(testTopicName, "Hello world!!!!!")
 
@@ -66,17 +74,10 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         }
 
         assertNoSpansReported()
-      }
     }
 
     "fail produce span when producing fails" in new SpanReportingTestScope(reporter) {
-      val noAutoCreateTopicsConfig = EmbeddedKafkaConfig(
-        defaultConfig.kafkaPort, defaultConfig.zooKeeperPort,
-        defaultConfig.customBrokerProperties + ("auto.create.topics.enable" -> "false"),
-        defaultConfig.customProducerProperties, defaultConfig.customConsumerProperties
-      )
 
-      withRunningKafka {
         Try(publishStringMessageToKafka("non-existent-topic", "msg to noone"))
 
         awaitNumReportedSpans(1)
@@ -84,12 +85,10 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         assertReportedSpan(_.operationName == "send") { span =>
           span.hasError should be (true)
         }
-      }(noAutoCreateTopicsConfig)
     }
 
-    "create a Producer/Consumer Span when publish/consume a message" in new SpanReportingTestScope(reporter) {
+    "create a Producer/Consumer Span when publish/consume a message" in new SpanReportingTestScope(reporter) with TestTopicScope  {
 
-      withRunningKafka {
 
         import net.manub.embeddedkafka.Codecs.stringDeserializer
 
@@ -126,12 +125,10 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           span.tags.get(plainLong("kafka.timestamp")) shouldBe consumedRecord.timestamp()
           span.tags.get(plain("kafka.timestampType")) shouldBe consumedRecord.timestampType().name
         }
-      }
     }
 
-    "create multiple Producer/Consumer Spans when publish/consume multiple messages - with autoCommit=true (one batch)" in new SpanReportingTestScope(reporter) {
+    "create multiple Producer/Consumer Spans when publish/consume multiple messages - with autoCommit=true (one batch)" in new SpanReportingTestScope(reporter) with TestTopicScope {
 
-      withRunningKafka {
 
         publishStringMessageToKafka(testTopicName, "m1")
         publishStringMessageToKafka(testTopicName, "m2")
@@ -149,12 +146,10 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           spans.map(_.trace.id.string).distinct should have size 2
         }
         DotFileGenerator.dumpToDotFile("client-autoCommit", reportedSpans)
-      }
     }
 
-    "create multiple Producer/Consumer Spans when publish/consume multiple messages - with autoCommit=false (multiple polls)" in new SpanReportingTestScope(reporter) {
+    "create multiple Producer/Consumer Spans when publish/consume multiple messages - with autoCommit=false (multiple polls)" in new SpanReportingTestScope(reporter) with TestTopicScope {
 
-      withRunningKafka {
 
         publishStringMessageToKafka(testTopicName, "m1")
         publishStringMessageToKafka(testTopicName, "m2")
@@ -171,11 +166,9 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
           spans.map(_.trace.id.string).distinct should have size 2
         }
         DotFileGenerator.dumpToDotFile("client-noAutoCommit", reportedSpans)
-      }
     }
 
-    "create a Producer/Consumer Span when publish/consume a message without follow-strategy and expect a linked span" in new SpanReportingTestScope(reporter) {
-      withRunningKafka {
+    "create a Producer/Consumer Span when publish/consume a message without follow-strategy and expect a linked span" in new SpanReportingTestScope(reporter) with TestTopicScope {
 
         Kamon.reconfigure(ConfigFactory.parseString("kamon.instrumentation.kafka.client.follow-strategy = false").withFallback(Kamon.config()))
 
@@ -215,11 +208,9 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         }
 
         assertNoSpansReported()
-      }
     }
 
-    "create a Producer/Consumer Span when publish/consume a message with delayed spans" in new SpanReportingTestScope(reporter) {
-      withRunningKafka {
+    "create a Producer/Consumer Span when publish/consume a message with delayed spans" in new SpanReportingTestScope(reporter) with TestTopicScope {
 
         Kamon.reconfigure(ConfigFactory.parseString("""
             |kamon.instrumentation.kafka.client.use-delayed-spans = true
@@ -265,7 +256,6 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
         }
 
         assertNoSpansReported()
-      }
     }
   }
 }

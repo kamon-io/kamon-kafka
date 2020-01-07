@@ -24,16 +24,19 @@ import org.apache.kafka.common.serialization.Deserializer
 import org.scalatest.Matchers
 import org.scalatest.concurrent.{Eventually, PatienceConfiguration}
 
+import scala.util.Random
+
 abstract class SpanReportingTestScope(_reporter: TestSpanReporter.BufferingSpanReporter) extends Eventually with Matchers with Consumers {
   private var _reportedSpans: List[Span.Finished] = Nil
   _reporter.clear()
+
 
   def reportedSpans: List[Span.Finished] = _reportedSpans
 
   def assertNoSpansReported(): Unit =
     _reporter.nextSpan() shouldBe None
 
-  def awaitReportedSpans(waitBetweenPollInMs: Int = 500): Unit = {
+  def awaitReportedSpans(waitBetweenPollInMs: Int = 100): Unit = {
     def doIt(prevNumReportedSpans: Int): Unit = {
       Thread.sleep(waitBetweenPollInMs)
       collectReportedSpans()
@@ -49,7 +52,7 @@ abstract class SpanReportingTestScope(_reporter: TestSpanReporter.BufferingSpanR
       collectReportedSpans()
       _reportedSpans.size shouldBe numOfExpectedSpans
     }
-    Thread.sleep(1000)
+    Thread.sleep(300)
     if(_reporter.nextSpan().isDefined) {
       fail(s"Expected only $numOfExpectedSpans spans to be reported, but got more!")
     }
