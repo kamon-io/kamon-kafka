@@ -114,20 +114,20 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
         // Verify tagging of sink node
         assertReportedSpan(s => s.operationName == SimpleStream.SinkNode && s.trace.id.string == streamTraceIds.head) { span =>
-          span.metricTags.get(plain("kafka.sink.topic")) shouldBe outTopic
-          span.metricTags.get(plain("kafka.sink.key")).take(5) shouldBe "hello"
+          span.tags.get(plain("kafka.sink.topic")) shouldBe outTopic
+          span.tags.get(plain("kafka.sink.key")).take(5) shouldBe "hello"
         }
 
         // Verify tagging of source node
         assertReportedSpan(s => s.operationName == SimpleStream.SourceNode && s.trace.id.string == streamTraceIds.head) { span =>
-          span.metricTags.get(plain("kafka.source.topic")) shouldBe inTopic
-          span.metricTags.get(plain("kafka.source.key")).take(5) shouldBe "hello"
+          span.tags.get(plain("kafka.source.topic")) shouldBe inTopic
+          span.tags.get(plain("kafka.source.key")).take(5) shouldBe "hello"
         }
 
         // Verify stream span
         assertReportedSpan(s => s.operationName == streamAppId && s.trace.id.string == streamTraceIds.head){ span =>
-          span.metricTags.get(plain("kafka.source.topic")) shouldBe inTopic
-          span.metricTags.get(plain("kafka.sink.topic")) shouldBe outTopic
+          span.tags.get(plain("kafka.source.topic")) shouldBe inTopic
+          span.tags.get(plain("kafka.sink.topic")) shouldBe outTopic
           span.tags.get(plainLong("kafka.source.partition")) shouldBe 0
           span.tags.get(plainLong("kafka.source.offset")).toLong should be > 0L
         }
