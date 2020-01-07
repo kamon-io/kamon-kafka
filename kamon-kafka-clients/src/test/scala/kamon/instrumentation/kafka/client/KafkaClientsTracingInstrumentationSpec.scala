@@ -27,6 +27,8 @@ import org.scalatest.concurrent.Eventually
 import org.scalatest.time.SpanSugar
 import org.scalatest.{BeforeAndAfter, BeforeAndAfterAll, Matchers, OptionValues, WordSpec}
 
+import scala.util.Try
+
 class KafkaClientsTracingInstrumentationSpec extends WordSpec
   with Matchers
   with Eventually
@@ -65,6 +67,24 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
 
         assertNoSpansReported()
       }
+    }
+
+    "fail produce span when producing fails" in new SpanReportingTestScope(reporter) {
+      val noAutoCreateTopicsConfig = EmbeddedKafkaConfig(
+        defaultConfig.kafkaPort, defaultConfig.zooKeeperPort,
+        defaultConfig.customBrokerProperties + ("auto.create.topics.enable" -> "false"),
+        defaultConfig.customProducerProperties, defaultConfig.customConsumerProperties
+      )
+
+      withRunningKafka {
+        Try(publishStringMessageToKafka("non-existent-topic", "msg to noone"))
+
+        awaitNumReportedSpans(1)
+
+        assertReportedSpan(_.operationName == "send") { span =>
+          span.hasError should be (true)
+        }
+      }(noAutoCreateTopicsConfig)
     }
 
     "create a Producer/Consumer Span when publish/consume a message" in new SpanReportingTestScope(reporter) {
