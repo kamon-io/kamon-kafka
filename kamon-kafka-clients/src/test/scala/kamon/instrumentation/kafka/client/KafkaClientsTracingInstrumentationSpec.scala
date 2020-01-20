@@ -16,7 +16,6 @@ package kamon.instrumentation.kafka.client
 
 import com.typesafe.config.ConfigFactory
 import kamon.Kamon
-import kamon.context.Context
 import kamon.instrumentation.kafka.testutil.{DotFileGenerator, SpanReportingTestScope, TestSpanReporting, TestTopicScope}
 import kamon.tag.Lookups._
 import kamon.testkit.Reconfigure
