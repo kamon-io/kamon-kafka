@@ -1,0 +1,284 @@
+
+digraph G {
+ label=<
+   <table border="0" cellborder="0" cellspacing="0">
+    <tr><td><b>stream-simple</b></td></tr>
+    <tr><td>2020-01-21T12:55:10.687</td></tr>
+   </table>
+ >
+ 
+	subgraph cluster_2de3113f74fd34b1 {
+		label="Trace 2de3113f74fd34b1";
+    style="dashed";
+     "ab28bce458f5d880" [shape="box"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>send</b></td></tr>
+ <tr><td>start: 2020-01-21T11:55:05.062797635Z</td></tr>
+ <tr><td>duration: 34 ms</td></tr>
+ <tr><td>kafka.topic=SimpleStream_AppId-KSTREAM-AGGREGATE-STATE-STORE-0000000004-repartition</td></tr>
+<tr><td>kafka.key=[B@41cad198</td></tr>
+<tr><td>kafka.partition=NULL</td></tr>
+<tr><td>kafka.clientId=SimpleStream_AppId-6c9e9655-49b3-49cf-aa21-8d8ae3a0a671-StreamThread-1-producer</td></tr>
+<tr><td>metric - operation=send</td></tr>
+<tr><td>metric - span.kind=producer</td></tr>
+<tr><td>metric - parentOperation=KSTREAM-SINK-0000000006</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.producer</td></tr>
+ </table>
+>; style="dotted"];
+ "68fb36b7a8db6284" [shape="box"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>SimpleStream_AppId</b></td></tr>
+ <tr><td>start: 2020-01-21T11:55:05.053644737Z</td></tr>
+ <tr><td>duration: 20 ms</td></tr>
+ <tr><td>kafka.source.partition=0</td></tr>
+<tr><td>kafka.applicationId=SimpleStream_AppId</td></tr>
+<tr><td>kafka.source.offset=0</td></tr>
+<tr><td>metric - operation=SimpleStream_AppId</td></tr>
+<tr><td>metric - span.kind=consumer</td></tr>
+<tr><td>metric - parentOperation=consumed-record</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.stream</td></tr>
+<tr><td>metric - kafka.sink.key=1</td></tr>
+<tr><td>metric - kafka.sink.topic=SimpleStream_AppId-KSTREAM-AGGREGATE-STATE-STORE-0000000004-repartition</td></tr>
+<tr><td>metric - kafka.source.topic=in</td></tr>
+ </table>
+>; style="rounded,bold"];
+ "bd932b80ebffb133" [shape="box"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>KSTREAM-SOURCE-0000000000</b></td></tr>
+ <tr><td>start: 2020-01-21T11:55:05.055711386Z</td></tr>
+ <tr><td>duration: 14 ms</td></tr>
+ <tr><td>metric - span.kind=processor</td></tr>
+<tr><td>metric - operation=KSTREAM-SOURCE-0000000000</td></tr>
+<tr><td>metric - parentOperation=SimpleStream_AppId</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.stream.node</td></tr>
+<tr><td>metric - kafka.source.key=1</td></tr>
+<tr><td>metric - kafka.source.topic=in</td></tr>
+ </table>
+>; style="rounded"];
+ "c345a760657e2161" [shape="box"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>KSTREAM-FILTER-0000000001</b></td></tr>
+ <tr><td>start: 2020-01-21T11:55:05.058131315Z</td></tr>
+ <tr><td>duration: 12 ms</td></tr>
+ <tr><td>metric - span.kind=processor</td></tr>
+<tr><td>metric - operation=KSTREAM-FILTER-0000000001</td></tr>
+<tr><td>metric - parentOperation=SimpleStream_AppId</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.stream.node</td></tr>
+ </table>
+>; style="rounded"];
+ "f8e4b9026118f476" [shape="box"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>KSTREAM-MAPVALUES-0000000002</b></td></tr>
+ <tr><td>start: 2020-01-21T11:55:05.058383762Z</td></tr>
+ <tr><td>duration: 11 ms</td></tr>
+ <tr><td>metric - span.kind=processor</td></tr>
+<tr><td>metric - operation=KSTREAM-MAPVALUES-0000000002</td></tr>
+<tr><td>metric - parentOperation=SimpleStream_AppId</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.stream.node</td></tr>
+ </table>
+>; style="rounded"];
+ "6b52f1fd921366ce" [shape="box"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>KSTREAM-KEY-SELECT-0000000003</b></td></tr>
+ <tr><td>start: 2020-01-21T11:55:05.058728616Z</td></tr>
+ <tr><td>duration: 11 ms</td></tr>
+ <tr><td>metric - span.kind=processor</td></tr>
+<tr><td>metric - operation=KSTREAM-KEY-SELECT-0000000003</td></tr>
+<tr><td>metric - parentOperation=SimpleStream_AppId</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.stream.node</td></tr>
+ </table>
+>; style="rounded"];
+ "2996737aa36c29c4" [shape="box"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>KSTREAM-FILTER-0000000007</b></td></tr>
+ <tr><td>start: 2020-01-21T11:55:05.059296442Z</td></tr>
+ <tr><td>duration: 10 ms</td></tr>
+ <tr><td>metric - span.kind=processor</td></tr>
+<tr><td>metric - operation=KSTREAM-FILTER-0000000007</td></tr>
+<tr><td>metric - parentOperation=SimpleStream_AppId</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.stream.node</td></tr>
+ </table>
+>; style="rounded"];
+ "00122439ad23dfb6" [shape="box"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>KSTREAM-SINK-0000000006</b></td></tr>
+ <tr><td>start: 2020-01-21T11:55:05.059484129Z</td></tr>
+ <tr><td>duration: 9 ms</td></tr>
+ <tr><td>metric - span.kind=processor</td></tr>
+<tr><td>metric - operation=KSTREAM-SINK-0000000006</td></tr>
+<tr><td>metric - parentOperation=SimpleStream_AppId</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.stream.node</td></tr>
+<tr><td>metric - kafka.sink.key=1</td></tr>
+<tr><td>metric - kafka.sink.topic=SimpleStream_AppId-KSTREAM-AGGREGATE-STATE-STORE-0000000004-repartition</td></tr>
+ </table>
+>; style="rounded"];
+ "c500ba15cafbc7ed" [shape="oval"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>consumed-record</b></td></tr>
+ <tr><td>start: 2020-01-21T11:54:05.859455247Z</td></tr>
+ <tr><td>duration: 99 ms</td></tr>
+ <tr><td>kafka.groupId=SimpleStream_AppId</td></tr>
+<tr><td>kafka.timestamp=1579607641325</td></tr>
+<tr><td>kafka.topic=in</td></tr>
+<tr><td>kafka.timestampType=CreateTime</td></tr>
+<tr><td>kafka.key=[B@78388ea3</td></tr>
+<tr><td>kafka.offset=0</td></tr>
+<tr><td>kafka.partition=0</td></tr>
+<tr><td>kafka.clientId=SimpleStream_AppId-6c9e9655-49b3-49cf-aa21-8d8ae3a0a671-StreamThread-1-consumer</td></tr>
+<tr><td>metric - operation=consumed-record</td></tr>
+<tr><td>metric - span.kind=consumer</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.consumer</td></tr>
+ </table>
+>; style="solid"];
+ "ad4f52dbbb417142" [shape="box"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>send</b></td></tr>
+ <tr><td>start: 2020-01-21T11:54:01.262965064Z</td></tr>
+ <tr><td>duration: 195 ms</td></tr>
+ <tr><td>kafka.topic=in</td></tr>
+<tr><td>kafka.key=1</td></tr>
+<tr><td>kafka.partition=NULL</td></tr>
+<tr><td>kafka.clientId=producer-1</td></tr>
+<tr><td>metric - operation=send</td></tr>
+<tr><td>metric - span.kind=producer</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.producer</td></tr>
+ </table>
+>; style="dotted"];
+	}
+
+
+	subgraph cluster_af417c6c6faad546 {
+		label="Trace af417c6c6faad546";
+    style="dashed";
+     "94a23dcfe14bc0ad" [shape="oval"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>consumed-record</b></td></tr>
+ <tr><td>start: 2020-01-21T11:54:05.859455247Z</td></tr>
+ <tr><td>duration: 99 ms</td></tr>
+ <tr><td>kafka.groupId=SimpleStream_AppId</td></tr>
+<tr><td>kafka.timestamp=1579607641508</td></tr>
+<tr><td>kafka.topic=in</td></tr>
+<tr><td>kafka.timestampType=CreateTime</td></tr>
+<tr><td>kafka.key=[B@64903fc5</td></tr>
+<tr><td>kafka.offset=1</td></tr>
+<tr><td>kafka.partition=0</td></tr>
+<tr><td>kafka.clientId=SimpleStream_AppId-6c9e9655-49b3-49cf-aa21-8d8ae3a0a671-StreamThread-1-consumer</td></tr>
+<tr><td>metric - operation=consumed-record</td></tr>
+<tr><td>metric - span.kind=consumer</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.consumer</td></tr>
+ </table>
+>; style="solid"];
+ "a36017bc8d9bc65a" [shape="box"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>send</b></td></tr>
+ <tr><td>start: 2020-01-21T11:54:01.482956382Z</td></tr>
+ <tr><td>duration: 47 ms</td></tr>
+ <tr><td>kafka.topic=in</td></tr>
+<tr><td>kafka.key=1</td></tr>
+<tr><td>kafka.partition=NULL</td></tr>
+<tr><td>kafka.clientId=producer-2</td></tr>
+<tr><td>metric - operation=send</td></tr>
+<tr><td>metric - span.kind=producer</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.producer</td></tr>
+ </table>
+>; style="dotted"];
+	}
+
+
+	subgraph cluster_7282bff494b59652 {
+		label="Trace 7282bff494b59652";
+    style="dashed";
+     "a46b0c604c0fdbec" [shape="oval"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>consumed-record</b></td></tr>
+ <tr><td>start: 2020-01-21T11:54:05.859455247Z</td></tr>
+ <tr><td>duration: 100 ms</td></tr>
+ <tr><td>kafka.groupId=SimpleStream_AppId</td></tr>
+<tr><td>kafka.timestamp=1579607641556</td></tr>
+<tr><td>kafka.topic=in</td></tr>
+<tr><td>kafka.timestampType=CreateTime</td></tr>
+<tr><td>kafka.key=[B@25b66398</td></tr>
+<tr><td>kafka.offset=2</td></tr>
+<tr><td>kafka.partition=0</td></tr>
+<tr><td>kafka.clientId=SimpleStream_AppId-6c9e9655-49b3-49cf-aa21-8d8ae3a0a671-StreamThread-1-consumer</td></tr>
+<tr><td>metric - operation=consumed-record</td></tr>
+<tr><td>metric - span.kind=consumer</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.consumer</td></tr>
+ </table>
+>; style="solid"];
+ "55a343316d835dbd" [shape="box"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>send</b></td></tr>
+ <tr><td>start: 2020-01-21T11:54:01.544775730Z</td></tr>
+ <tr><td>duration: 34 ms</td></tr>
+ <tr><td>kafka.topic=in</td></tr>
+<tr><td>kafka.key=1</td></tr>
+<tr><td>kafka.partition=NULL</td></tr>
+<tr><td>kafka.clientId=producer-3</td></tr>
+<tr><td>metric - operation=send</td></tr>
+<tr><td>metric - span.kind=producer</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.producer</td></tr>
+ </table>
+>; style="dotted"];
+	}
+
+
+	subgraph cluster_5bc39832b45f72eb {
+		label="Trace 5bc39832b45f72eb";
+    style="dashed";
+     "e9617afd9a3b13cf" [shape="box"; label=<
+ <table border="0" cellborder="0" cellspacing="0">
+ <tr><td><b>poll</b></td></tr>
+ <tr><td>start: 2020-01-21T11:54:05.859455247Z</td></tr>
+ <tr><td>duration: 76 ms</td></tr>
+ <tr><td>kafka.groupId=SimpleStream_AppId</td></tr>
+<tr><td>kafka.topics=in</td></tr>
+<tr><td>numRecords=3</td></tr>
+<tr><td>kafka.partitions=0</td></tr>
+<tr><td>kafka.clientId=SimpleStream_AppId-6c9e9655-49b3-49cf-aa21-8d8ae3a0a671-StreamThread-1-consumer</td></tr>
+<tr><td>metric - operation=poll</td></tr>
+<tr><td>metric - span.kind=consumer</td></tr>
+<tr><td>metric - error=false</td></tr>
+<tr><td>metric - component=kafka.consumer</td></tr>
+ </table>
+>; style="dotted"];
+	}
+
+  "00122439ad23dfb6" -> "ab28bce458f5d880" [style="bold"];
+ "c500ba15cafbc7ed" -> "68fb36b7a8db6284" [style="bold"];
+ "68fb36b7a8db6284" -> "bd932b80ebffb133" [style="bold"];
+ "68fb36b7a8db6284" -> "c345a760657e2161" [style="bold"];
+ "68fb36b7a8db6284" -> "f8e4b9026118f476" [style="bold"];
+ "68fb36b7a8db6284" -> "6b52f1fd921366ce" [style="bold"];
+ "68fb36b7a8db6284" -> "2996737aa36c29c4" [style="bold"];
+ "68fb36b7a8db6284" -> "00122439ad23dfb6" [style="bold"];
+ "ad4f52dbbb417142" -> "c500ba15cafbc7ed" [style="bold"];
+ "a36017bc8d9bc65a" -> "94a23dcfe14bc0ad" [style="bold"];
+ "55a343316d835dbd" -> "a46b0c604c0fdbec" [style="bold"];
+ "start" -> "e9617afd9a3b13cf" [style="dotted"];
+ "start" -> "55a343316d835dbd" [style="dotted"];
+ "start" -> "a36017bc8d9bc65a" [style="dotted"];
+ "start" -> "ad4f52dbbb417142" [style="dotted"];
+  "bd932b80ebffb133" -> "c345a760657e2161" [style="dashed"];
+ "c345a760657e2161" -> "f8e4b9026118f476" [style="dashed"];
+ "f8e4b9026118f476" -> "6b52f1fd921366ce" [style="dashed"];
+ "6b52f1fd921366ce" -> "2996737aa36c29c4" [style="dashed"];
+ "2996737aa36c29c4" -> "00122439ad23dfb6" [style="dashed"];
+ "e9617afd9a3b13cf" -> "c500ba15cafbc7ed" [style="dashed"];
+ "e9617afd9a3b13cf" -> "94a23dcfe14bc0ad" [style="dashed"];
+ "e9617afd9a3b13cf" -> "a46b0c604c0fdbec" [style="dashed"];
+}

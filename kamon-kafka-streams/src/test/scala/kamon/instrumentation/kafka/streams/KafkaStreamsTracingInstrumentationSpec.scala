@@ -32,6 +32,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.ProducerConfig
 import org.apache.kafka.common.serialization.{Serde, Serdes}
 import org.apache.kafka.streams.kstream.JoinWindows
+import org.apache.kafka.streams.processor.{Processor, ProcessorContext, PunctuationType, Punctuator}
 import org.apache.kafka.streams.{KafkaStreams, StreamsConfig, Topology, scala}
 import org.scalatest.concurrent.Eventually
 import org.scalatest.time.SpanSugar
@@ -64,7 +65,6 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
   "The Kafka Streams Tracing Instrumentation" should {
 
     "ensure continuation of traces from 'regular' publishers and streams with 'followStrategy' and assert stream and node spans are present" in new SpanReportingTestScope(reporter) with ConfigSupport {
-
       import net.manub.embeddedkafka.Codecs._
 
       // Explicitly enable follow-strategy ...
@@ -79,63 +79,44 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
 
       val streamAppId = "SimpleStream_AppId"
       runStreams(Seq(inTopic, outTopic), SimpleStream.buildTopology(), extraConfig = Map(StreamsConfig.APPLICATION_ID_CONFIG -> streamAppId)) {
-        publishToKafka(inTopic, "hello1", "world1!")
-        publishToKafka(inTopic, "hello2", "world2!")
+        publishToKafka(inTopic, "1", "prvi")
+        publishToKafka(inTopic, "1", "drugi")
+        publishToKafka(inTopic, "1", "treci")
 
+
+        //TODO what
         withConsumer[String, String, Unit] { consumer =>
-          val consumedMessages: Stream[(String, String)] = consumer.consumeLazily(outTopic)
-          consumedMessages.take(2).toList should contain allOf(
-              "hello1" -> "world1!",
-              "hello2" -> "world2!"
-            )
+          val consumedMessages: Stream[(String, String)] = consumer.consumeLazily("intermediate")
+          consumedMessages.take(10)
         }
 
         awaitReportedSpans()
+        DotFileGenerator.dumpToDotFile("stream-simple", reportedSpans)
 
         val streamTraceIds = reportedSpans.filter(_.tags.get(plain("kafka.applicationId")) == streamAppId).map(_.trace.id.string).distinct
-        streamTraceIds should have size 2
+        streamTraceIds should have size 1
 
-        // Verify existence and setup of node spans
-        streamTraceIds.foreach{traceId =>
-          assertReportedSpans(s => s.trace.id.string == traceId){ spans =>
-            val allOpsInTrace = spans.map(_.operationName)
-            allOpsInTrace should have size 10 // in addition to the once below it should contain the initial `send` and the final `consumed-record` from the test setip
-            allOpsInTrace should contain allOf("consumed-record", streamAppId, SimpleStream.SourceNode, SimpleStream.FilterNode, SimpleStream.PeekNode, SimpleStream.MapValuesNode, SimpleStream.SinkNode, "send")
-          }
-        }
-
-        // Verify node span and their linkage
-        assertReportedSpan(s => s.operationName == SimpleStream.SourceNode && s.trace.id.string == streamTraceIds.head) { sourceSpan =>
-          sourceSpan.links shouldBe empty
-          assertReportedSpan(s => s.operationName == SimpleStream.FilterNode && s.trace.id.string == streamTraceIds.head) { filterSpan =>
-            filterSpan.links.filter(l => l.spanId == sourceSpan.id) should have size 1
-          }
-        }
-
-        // Verify tagging of sink node
-        assertReportedSpan(s => s.operationName == SimpleStream.SinkNode && s.trace.id.string == streamTraceIds.head) { span =>
-          span.tags.get(plain("kafka.sink.topic")) shouldBe outTopic
-          span.tags.get(plain("kafka.sink.key")).take(5) shouldBe "hello"
-        }
-
-        // Verify tagging of source node
-        assertReportedSpan(s => s.operationName == SimpleStream.SourceNode && s.trace.id.string == streamTraceIds.head) { span =>
-          span.tags.get(plain("kafka.source.topic")) shouldBe inTopic
-          span.tags.get(plain("kafka.source.key")).take(5) shouldBe "hello"
-        }
-
-        // Verify stream span
-        assertReportedSpan(s => s.operationName == streamAppId && s.trace.id.string == streamTraceIds.head){ span =>
-          span.tags.get(plain("kafka.source.topic")) shouldBe inTopic
-          span.tags.get(plain("kafka.sink.topic")) shouldBe outTopic
-          span.tags.get(plainLong("kafka.source.partition")) shouldBe 0
-          span.tags.get(plainLong("kafka.source.offset")).toLong should be > 0L
-        }
-
-        DotFileGenerator.dumpToDotFile("stream-simple", reportedSpans)
       }
     }
 
+    new Processor[String] {
+
+      override def init(context: ProcessorContext): Unit = {
+        context.schedule(null, PunctuationType.WALL_CLOCK_TIME, new Punctuator {
+          override def punctuate(timestamp: Long): Unit = {
+            context.headers()
+          }
+        })
+      }
+
+      override def process(key: String, value: V): Unit = {
+
+      }
+
+      override def close(): Unit = ???
+    }
+
+/*
     "Disable node span creation in config and assert one stream span present" in new SpanReportingTestScope(reporter) with ConfigSupport {
 
       import net.manub.embeddedkafka.Codecs._
@@ -413,7 +394,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         publishToKafka(inTopic, "hello1", "world1!")
 
         awaitReportedSpans(2000)
-
+        DotFileGenerator.dumpToDotFile("stream-exception-tagged", reportedSpans)
         val streamTraceIds = reportedSpans.filter(_.tags.get(plain("kafka.applicationId")) == streamAppId).map(_.trace.id.string).distinct
         streamTraceIds should have size 1
 
@@ -429,7 +410,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
         nodeSpans.head.hasError shouldBe true
         nodeSpans.head.tags.get(any("error.stacktrace")).asInstanceOf[AnyRef] should not be null
 
-        DotFileGenerator.dumpToDotFile("stream-exception-tagged", reportedSpans)
+
       }
 
     }
@@ -484,6 +465,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       }
 
     }
+*/
 
   }
 
@@ -502,16 +484,18 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
       val streamBuilder = new scala.StreamsBuilder
       streamBuilder.stream[String, String](in)
         .filter{(k, v) => true }
-        .peek { (k, v) =>
+     /*   .peek { (k, v) =>
           if (assertContextNotEmpty && Kamon.currentContext() == Context.Empty) fail("Kamon.currentContext() == Context.Empty !!")
           if (raiseException) throw new RuntimeException("Peng!")
-        }
+        }*/
         .mapValues{(k, v) => v}
         // todo: add detailed aggregate logging, including traceId of the previous update to the aggregate object
         //        .groupByKey
         //        .aggregate(""){ (k,v, agg) =>agg + v}
         //        .toStream
-        .to(out)
+        .groupBy((k,v) => (k.toInt % 3).toString)
+        .aggregate("")((k, v, va) => v + s" $va")
+        .toStream.to(out)
 
       streamBuilder.build
     }

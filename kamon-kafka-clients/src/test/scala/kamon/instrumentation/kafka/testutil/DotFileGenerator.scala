@@ -44,23 +44,18 @@ object DotFileGenerator {
   val StartNode = "start"
 
   def dumpToDotFile(filename: String, spans: List[Span.Finished]): Unit = {
-    if(System.getenv().containsKey("DOTFILEGENERATOR_ENABLED")) {
-      val renderAllTags = System.getenv().containsKey("DOTFILEGENERATOR_ALLTAGS")
-      val dotText = toDotString(spans, filename, renderAllTags)
-      val file = new File(filename + ".dot")
-      val bw = new BufferedWriter(new FileWriter(file))
-      bw.write(dotText)
-      bw.close()
-      if(System.getenv().containsKey("DOTFILEGENERATOR_CMD")) {
-        val cmd = System.getenv().get("DOTFILEGENERATOR_CMD").replace("$FILENAME", filename)
-        val rc = executeShellCommand("sh", "-c", cmd)
-        if(rc == 0) {
-          println(s"DotFileGenerator: wrote and processed file: ${file.getAbsolutePath}")
-        }
-        else {
-          println(s"DOT generation failed! rc=$rc, cmd='$cmd'")
-        }
-      }
+    val dotText = toDotString(spans, filename, true)
+    val file = new File(filename + ".dot")
+    val bw = new BufferedWriter(new FileWriter(file))
+    bw.write(dotText)
+    bw.close()
+    val cmd = "dot -Tjpeg $FILENAME.dot | feh -".replace("$FILENAME", filename)
+    val rc = executeShellCommand("sh", "-c", cmd)
+    if(rc == 0) {
+      println(s"DotFileGenerator: wrote and processed file: ${file.getAbsolutePath}")
+    }
+    else {
+      println(s"DOT generation failed! rc=$rc, cmd='$cmd'")
     }
   }
 
@@ -84,11 +79,11 @@ object DotFileGenerator {
   }
 
 
-  private def toDotString(spans: List[Span.Finished], name: String, allTags: Boolean = false): String = {
+  private def toDotString(spans: List[Span.Finished], name: String, allTags: Boolean = true): String = {
     def filterTags(span: Span.Finished) : List[(String,String)]= {
       if(allTags) {
         (span.tags.iterator.map(t => t.key -> Tag.unwrapValue(t).toString) ++
-        span.tags.iterator.map(t => t.key -> Tag.unwrapValue(t).toString)).toList
+        span.metricTags.iterator.map(t => s"metric - ${t.key}" -> Tag.unwrapValue(t).toString)).toList
       } else {
         val optionalMetricTags = List("kafka.topic", "kafka.sink.topic", "kafka.source.topic")
         val commonTags = List(

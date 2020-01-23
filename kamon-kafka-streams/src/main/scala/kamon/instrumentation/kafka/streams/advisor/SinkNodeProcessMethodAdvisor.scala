@@ -35,8 +35,8 @@ object SinkNodeProcessMethodAdvisor extends NodeTraceSupport {
   def onEnter[K,V](@Advice.This node: SinkNode[_,_] with HasProcessorContextWithKamonContext with HasContext, @Advice.Argument(0) key: K, @Advice.Argument(1) value: V,  @Advice.FieldValue("topicExtractor") topicExtractor: TopicNameExtractor[K,V]): Unit = {
     val pCtx = extractProcessorContext(node)
     val topicName = topicExtractor.extract(key, value, pCtx.recordContext)
-    Kamon.currentSpan().tagMetrics("kafka.sink.topic", topicName)
-    Kamon.currentSpan().tagMetrics("kafka.sink.key", key.toString)
+    Kamon.currentSpan().tagMetrics("kafka.sink.topic", topicName) //TODO dont tag metrics
+    Kamon.currentSpan().tagMetrics("kafka.sink.key", key.toString) //TODO boom
 
     // todo: reconsider: Does this really makes sense? What if there is more than 1 sink node?
     pCtx.context.get(Span.Key).tagMetrics("kafka.sink.topic", topicName)

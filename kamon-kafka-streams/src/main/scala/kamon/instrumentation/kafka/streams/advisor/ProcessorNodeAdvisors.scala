@@ -49,21 +49,21 @@ object ProcessorNodeProcessMethodAdvisor extends NodeTraceSupport {
   @Advice.OnMethodEnter
   def onEnter[K,V](@Advice.This node: ProcessorNode[K,V] with HasProcessorContextWithKamonContext with HasContext, @Advice.Argument(0) key: K, @Advice.Argument(1) value: V): Scope = {
     val pCtx = extractProcessorContext(node)
-    val previousSpan = Kamon.currentSpan() //TODO this can at this point be whatever?
+    val previousSpan = Kamon.currentSpan() //TODO this can at this point be whatever?, no StreamTask instrumentation sets it to globa SubTopology span
     // Determine the context to use as `currentContext` during the execution of `process`
     val newCurrentContext = if (shouldTrace(pCtx)) {
       // create a new span for this node
       val spanBuilder = Kamon.spanBuilder(pCtx.currentNode().name())
         .asChildOf(pCtx.context.get(Span.Key))
         .tagMetrics("span.kind", "processor")
-        .tagMetrics("component", "kafka.stream.node")
+        .tagMetrics("component", "kafka.stream.node") //TODO not sure
 
       // link to the "previous" node of the stream topology - if there is one
       if(previousSpan != Span.Empty)
         spanBuilder.link(previousSpan, Span.Link.Kind.FollowsFrom)
-
+      println("POCEO PROCESSOR")
       val span = spanBuilder.start()
-      val nodeCtx = Context.of(Span.Key, span) //TODO again, just span, lost rest of the context
+      val nodeCtx = Context.of(Span.Key, span) //TODO just span, lost rest of the context
       node.setContext(nodeCtx)
       nodeCtx
     } else
@@ -71,7 +71,7 @@ object ProcessorNodeProcessMethodAdvisor extends NodeTraceSupport {
       pCtx.context
 
     // Store/set context while executing the actual `process` function
-    Kamon.storeContext(newCurrentContext)
+    Kamon.storeContext(newCurrentContext) //TODO it is aleardy there
   }
 
   @Advice.OnMethodExit(onThrowable = classOf[Throwable]) // todo: add "suppress = classOf[Throwable]" ?
@@ -84,11 +84,14 @@ object ProcessorNodeProcessMethodAdvisor extends NodeTraceSupport {
       // Log exception if needed
       Option(throwable).foreach(t => node.context.get(Span.Key).fail(t))
       // Finish span and reset node context
+      println("ZAVRSION PROCESSOR")
       node.context.get(Span.Key).finish()
       node.setContext(null)
     } else {
       // Log exception on stream's context if needed
       Option(throwable).foreach(t => pCtx.context.get(Span.Key).fail(t))
+      //TODO       Kamon.currentSpan() since onEnter stored the context and it already decided whether to trace it or not
+
     }
 
     // Close the scope to remove the current context

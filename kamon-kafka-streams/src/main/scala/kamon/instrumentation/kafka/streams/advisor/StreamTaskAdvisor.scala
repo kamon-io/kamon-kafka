@@ -24,6 +24,7 @@ import kanela.agent.libs.net.bytebuddy.asm.Advice
 import org.apache.kafka.streams.processor.internals.{InternalProcessorContext, ProcessorNode, StampedRecord, StreamTask}
 
 
+//TODO all of tags used here can be extracted from processor context
 class StreamTaskUpdateProcessContextAdvisor
 object StreamTaskUpdateProcessContextAdvisor {
 
@@ -46,9 +47,9 @@ object StreamTaskUpdateProcessContextAdvisor {
         .tag("kafka.source.partition", record.partition())
         .tag("kafka.source.offset", record.offset())
       maybeParentSpan.foreach(parentSpan => spanBuilder.asChildOf(parentSpan))
-
+      println("POCEO TASK")
       val span = spanBuilder.start()
-      processorCtx.setContext(Context.of(Span.Key, span))
+      processorCtx.setContext(Context.of(Span.Key, span)) //TODO context propagation broken
     }
   }
 }
@@ -70,6 +71,7 @@ object StreamTaskProcessMethodAdvisor {
       if (recordProcessed || maybeThrowable.nonEmpty) {
         currentSpan.mark(s"kafka.streams.task.id=${streamTask.id()}")
         currentSpan.tag("kafka.applicationId", streamTask.applicationId())
+        println("ZAVRSION TASK")
         currentSpan.finish()
       }
     }

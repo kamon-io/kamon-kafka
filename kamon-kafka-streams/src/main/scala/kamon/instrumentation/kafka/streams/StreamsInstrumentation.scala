@@ -22,6 +22,14 @@ import kanela.agent.api.instrumentation.InstrumentationBuilder
 
 class StreamsInstrumentation extends InstrumentationBuilder {
 
+  /*TODO
+  *  Apply mixin to RecordContext, post construct
+  * use internal headers received from record to construct initial context
+  * Every processor can get currentContext and from there Kamon context via record context, no need to propagate it manually
+  * Especially if its immediately burned into headers
+  * */
+
+
   /**
     * This is required to access the original ConsumerRecord wrapped by StampedRecord
     * in order to extract his span. This span can then be used a parent for the
@@ -30,12 +38,13 @@ class StreamsInstrumentation extends InstrumentationBuilder {
   onSubTypesOf("org.apache.kafka.streams.processor.internals.StampedRecord")
     .mixin(classOf[Mixin])
     .advise(isConstructor, classOf[StampedRecordAdvisor]) //TODO no instrumentation neccessary, stampedRecord is Stamped<ConsumerRecord>, cast and access public member?
+  //TODO bleh, ambiguous overloads, also not sure why span is set, fix others first
 
   /**
     * This propagates the span from the original "raw" record to the "deserialized" record
     * that is processed by the stream.
     */
-  onType("org.apache.kafka.streams.processor.internals.RecordDeserializer")
+  onType("org.apache.kafka.streams.processor.internals.RecordDeserializer") //TODO replace this with RecordContext instrumentation
     .advise(method("deserialize"), classOf[RecordDeserializerAdvisor])
 
   /**
@@ -43,19 +52,21 @@ class StreamsInstrumentation extends InstrumentationBuilder {
     * This can be enabled/disable via configuration.
     * Also provide a bridge to access the internal processor context which carries
     * the Kamon context.
-    */
+    */ //TODO ProcessorNode is inited only to pickup metric info and then inits Processor with context, node and internalContext are irelevant, only Processor & processorContext
   onSubTypesOf("org.apache.kafka.streams.processor.internals.ProcessorNode")   //TODO why processorNode even, why not just processor?
-    .advise(method("init"), classOf[ProcessorNodeInitMethodAdvisor]) //TODO Node is inited with processorContext which carries kamon context, why
-    .advise(method("process"), classOf[ProcessorNodeProcessMethodAdvisor])
+    .advise(method("init"), classOf[ProcessorNodeInitMethodAdvisor]) //TODO Node is inited with processorContext which carries kamon context, why (sinks and sources???), done once per lifecycle
+    .advise(method("process"), classOf[ProcessorNodeProcessMethodAdvisor]) //TODO this is Processor.process + metrics recording, why not only processor
     .advise(method("close"), classOf[ProcessorNodeCloseMethodAdvisor])
     .mixin(classOf[HasContext.VolatileMixin])
-    .mixin(classOf[HasProcessorContextWithKamonContext.Mixin])
+    .mixin(classOf[HasProcessorContextWithKamonContext.Mixin]) //TODO could this be bridget since its there anyway
 
   onType("org.apache.kafka.streams.processor.internals.SinkNode")
-    .advise(method("process"), classOf[SinkNodeProcessMethodAdvisor])
+    .advise(method("process"), classOf[SinkNodeProcessMethodAdvisor])  //TODO this one is caught both by ProcessorNode and SinkNode, only tags metrics but what about the ordering, maybe create a sinking operation?
 
   onType("org.apache.kafka.streams.processor.internals.SourceNode")
     .advise(method("process"), classOf[SourceNodeProcessMethodAdvisor])
+
+  //TODO should either trace stages or entire subtopology
 
   /**
     * Instruments org.apache.kafka.streams.processor.internals.StreamTask::updateProcessorContext
@@ -65,8 +76,16 @@ class StreamsInstrumentation extends InstrumentationBuilder {
     *
     */
   onType("org.apache.kafka.streams.processor.internals.StreamTask") //TODO is this supposed to be parent span for all stream processing stage spans
-    .advise(method("updateProcessorContext"), classOf[StreamTaskUpdateProcessContextAdvisor])
-    .advise(method("process"), classOf[StreamTaskProcessMethodAdvisor])
+    .advise(method("updateProcessorContext"), classOf[StreamTaskUpdateProcessContextAdvisor]) //TODO this creates a span for this processing
+    .advise(method("process"), classOf[StreamTaskProcessMethodAdvisor]) //TODO finishes span started in updateContext, and tags with infor available from StreamTask
+
+
+  /*Instrument RecordContext to carry span
+  * Processor.process will access super.context and get message context from there
+  * Need to get task info into record context too
+  * */
+
+
 
   /**
     * Keep the stream's Kamon context on the (Abstract)ProcessorContext so that it is available
@@ -91,5 +110,9 @@ class StreamsInstrumentation extends InstrumentationBuilder {
   onSubTypesOf("org.apache.kafka.streams.processor.internals.RecordCollector")
     .mixin(classOf[HasContext.VolatileMixin])
     .advise(method("send").and(withArgument(4, classOf[Integer])), classOf[RecordCollectorSendAdvisor])
+
+
+  //TODO in all advices, having stage filtered out from tracing breaks context propagation
+  //TODO should move all context propagation to RecordContext and ProcessorContext respectively
 
 }

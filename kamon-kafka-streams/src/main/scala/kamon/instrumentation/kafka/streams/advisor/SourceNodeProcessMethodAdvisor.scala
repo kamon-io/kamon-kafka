@@ -32,7 +32,7 @@ object SourceNodeProcessMethodAdvisor extends NodeTraceSupport {
   @Advice.OnMethodEnter
   def onEnter[K,V](@Advice.This node: SourceNode[_,_] with HasProcessorContextWithKamonContext with HasContext, @Advice.Argument(0) key: K, @Advice.Argument(1) value: V): Unit = {
     val pCtx = extractProcessorContext(node)
-    Kamon.currentSpan().tagMetrics("kafka.source.topic", pCtx.recordContext().topic())
-    Kamon.currentSpan().tagMetrics("kafka.source.key", key.toString)
+    Kamon.currentSpan().tagMetrics("kafka.source.topic", pCtx.recordContext().topic()) //TODO tagMetrics?
+    Kamon.currentSpan().tagMetrics("kafka.source.key", key.toString) //TODO boom
   }
 }
