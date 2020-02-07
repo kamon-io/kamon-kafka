@@ -35,7 +35,7 @@ lazy val kafkaClients = (project in file("kamon-kafka-clients"))
   .settings(instrumentationSettings)
   .enablePlugins(JavaAgent)
   .settings(bintrayPackage := "kamon-kafka")
-  .settings(name := "kamon-kafka-clients")
+  .settings(name := "kamon-kafka")
   .settings(scalaVersion := "2.12.9")
   .settings(crossScalaVersions := Seq("2.11.12", "2.12.9"))
   .settings(
