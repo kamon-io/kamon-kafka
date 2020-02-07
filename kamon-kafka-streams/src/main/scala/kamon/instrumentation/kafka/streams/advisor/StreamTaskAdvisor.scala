@@ -28,7 +28,7 @@ import org.apache.kafka.streams.processor.internals.{InternalProcessorContext, P
 class StreamTaskUpdateProcessContextAdvisor
 object StreamTaskUpdateProcessContextAdvisor {
 
-  import kamon.instrumentation.kafka.client.Client._
+  import kamon.instrumentation.kafka.client.KafkaInstrumentation._
 
   @Advice.OnMethodExit(onThrowable = classOf[Throwable], suppress = classOf[Throwable])
   def onExit(

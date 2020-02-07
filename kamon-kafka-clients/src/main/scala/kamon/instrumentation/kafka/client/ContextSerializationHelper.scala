@@ -22,5 +22,4 @@ object ContextSerializationHelper {
   def fromByteArray(input: Array[Byte]): Context = {
     Kamon.defaultBinaryPropagation().read(BinaryPropagation.ByteStreamReader.of(input))
   }
-
 }

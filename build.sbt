@@ -15,11 +15,12 @@
 
 val kamonCore           = "io.kamon"            %% "kamon-core"                       % "2.0.4"
 val kamonTestkit        = "io.kamon"            %% "kamon-testkit"                    % "2.0.4"
-val scalaExtension      = "io.kamon"            %% "kamon-instrumentation-common"     % "2.0.0"
+val instrumentationCommon = "io.kamon"          %% "kamon-instrumentation-common"     % "2.0.1"
+val kanela              = "io.kamon"             % "kanela-agent"                     % "1.0.5"
 
 val kafkaClient         = "org.apache.kafka"    % "kafka-clients"	                    % "2.3.0"
 val kafkaStreams        = "org.apache.kafka"    % "kafka-streams"	                    % "2.3.0"
-val kafkaStreamsTestUtils    = "org.apache.kafka"    % "kafka-streams-test-utils"          % "2.3.0"
+val kafkaStreamsTestUtils    = "org.apache.kafka"    % "kafka-streams-test-utils"     % "2.3.0"
 val kafkaStreamsScala   = "org.apache.kafka"    %% "kafka-streams-scala"	            % "2.3.0"
 
 val kafkaTest           = "io.github.embeddedkafka" %% "embedded-kafka"               % "2.3.0"
@@ -31,30 +32,28 @@ lazy val root = (project in file("."))
   .aggregate(kafkaClients, kafkaStream)
 
 lazy val kafkaClients = (project in file("kamon-kafka-clients"))
+  .settings(instrumentationSettings)
   .enablePlugins(JavaAgent)
   .settings(bintrayPackage := "kamon-kafka")
   .settings(name := "kamon-kafka-clients")
   .settings(scalaVersion := "2.12.9")
   .settings(crossScalaVersions := Seq("2.11.12", "2.12.9"))
-  .settings(javaAgents += "io.kamon" % "kanela-agent" % "1.0.4" % "compile")
-  .settings(resolvers += Resolver.bintrayRepo("kamon-io", "snapshots"))
-  .settings(resolvers += Resolver.mavenLocal)
   .settings(
-      libraryDependencies ++=
-        compileScope(kamonCore, kafkaClient, scalaExtension) ++
-        testScope(kamonTestkit, scalatest, slf4jApi, logbackClassic, kafkaTest))
+    libraryDependencies ++=
+      compileScope(kamonCore, kafkaClient, instrumentationCommon) ++
+      providedScope(kanela) ++
+      testScope(kamonTestkit, scalatest, slf4jApi, logbackClassic, kafkaTest))
 
 lazy val kafkaStream = (project in file("kamon-kafka-streams"))
+  .settings(instrumentationSettings)
   .enablePlugins(JavaAgent)
   .dependsOn(kafkaClients % "compile->compile;test->test")
   .settings(bintrayPackage := "kamon-kafka")
   .settings(name := "kamon-kafka-streams")
   .settings(scalaVersion := "2.12.9")
   .settings(crossScalaVersions := Seq("2.11.12", "2.12.9"))
-  .settings(javaAgents += "io.kamon"    % "kanela-agent"   % "1.0.4"  % "compile;test")
-  .settings(resolvers += Resolver.bintrayRepo("kamon-io", "snapshots"))
-  .settings(resolvers += Resolver.mavenLocal)
   .settings(
-        libraryDependencies ++=
-          compileScope(kamonCore, kafkaStreams, kafkaStreamsScala, scalaExtension) ++
-            testScope(kamonTestkit, scalatest, slf4jApi, logbackClassic, kafkaStreamTest, kafkaStreamsTestUtils))
+    libraryDependencies ++=
+      compileScope(kamonCore, kafkaStreams, kafkaStreamsScala, instrumentationCommon) ++
+      providedScope(kanela) ++
+      testScope(kamonTestkit, scalatest, slf4jApi, logbackClassic, kafkaStreamTest, kafkaStreamsTestUtils))

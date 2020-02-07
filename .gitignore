@@ -55,3 +55,4 @@ server.pid
 cassandraServerPublishing
 # Default sigar library provision location.
 native/
+*.dot

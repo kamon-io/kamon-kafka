@@ -10,27 +10,28 @@ import org.apache.kafka.clients.consumer.ConsumerRecords
 
 import scala.concurrent.duration._
 
-object RecordProcessor {
+private[kafka] object RecordProcessor {
 
   import scala.collection.JavaConverters._
 
-  /*Produces poll span (`operation=poll`) per each poll invocation which is then linked to per-record spans.
-  * For each polled record, new consumer span (`operation=consumed-record`) is created as a child or
-  * linked to it's bundled span (if any is present). Context (either new or inbound) containing consumer
-  * span is then propagated with the record via `HasContext` mixin
-  * */
+  /**
+   * Produces poll span (`operation=poll`) per each poll invocation which is then linked to per-record spans.
+   * For each polled record a new consumer span (`operation=consumed-record`) is created as a child or
+   * linked to it's bundled span (if any is present). Context (either new or inbound) containing consumer
+   * span is then propagated with the record via `HasContext` mixin
+   */
   def process[V, K](startTime: Instant, clientId: String, groupId: String, records: ConsumerRecords[K, V]): ConsumerRecords[K, V] = {
-
-    import Client._
+    val settings = KafkaInstrumentation.settings
 
     if (!records.isEmpty) {
-      val spanBuilder = Kamon.consumerSpanBuilder("poll", "kafka.consumer")
+      val pollSpan = Kamon.consumerSpanBuilder("poll", "kafka.consumer")
+        .tag("kafka.consumer.record-count", records.count())
         .tag("kafka.groupId", groupId)
         .tag("kafka.clientId", clientId)
-        .tag("numRecords", records.count())
         .tag("kafka.partitions", records.partitions().asScala.map(_.partition()).mkString(","))
         .tag("kafka.topics", records.partitions().asScala.map(_.topic()).toSet.mkString(","))
-      val pollSpan = spanBuilder.start(startTime)
+        .start(startTime)
+
       pollSpan.finish()
 
       records.iterator().asScala.foreach { record =>
@@ -52,7 +53,7 @@ object RecordProcessor {
         // Key could be optional ... see tests
         Option(record.key()).foreach(k => spanBuilder.tag("kafka.key", record.key().toString)) //TODO unsure of toString behaviour here
 
-        if (Client.followStrategy)
+        if (settings.continueTraceOnConsumer)
           spanBuilder.asChildOf(sendingContext.get(Span.Key))
         else
           spanBuilder.link(sendingContext.get(Span.Key), Span.Link.Kind.FollowsFrom)
@@ -60,7 +61,7 @@ object RecordProcessor {
         // Link new span also to polling span
         spanBuilder.link(pollSpan, Span.Link.Kind.FollowsFrom)
 
-        val consumedRecordSpan = if (Client.useDelayedSpans)
+        val consumedRecordSpan = if (settings.useDelayedSpans)
           // Kafka's timestamp is expressed in millis, convert to nanos => this might spoil precision here ...
           spanBuilder.delay(Kamon.clock().toInstant(record.timestamp().millis.toNanos)).start(startTime)
         else
@@ -74,6 +75,7 @@ object RecordProcessor {
           .setContext(sendingContext.withEntry(Span.Key, consumedRecordSpan))
       }
     }
+
     records
   }
 }

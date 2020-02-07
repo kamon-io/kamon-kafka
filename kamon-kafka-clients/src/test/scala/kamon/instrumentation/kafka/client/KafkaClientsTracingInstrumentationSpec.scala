@@ -48,213 +48,200 @@ class KafkaClientsTracingInstrumentationSpec extends WordSpec
     )
 
   implicit val patienceConfigTimeout = timeout(20 seconds)
-  import Client._
-
-  override def beforeAll(): Unit = EmbeddedKafka.start()(defaultConfig)
-
+  override def beforeAll(): Unit = {
+    enableFastSpanFlushing()
+    sampleAlways()
+    EmbeddedKafka.start()(defaultConfig)
+  }
   override def afterAll(): Unit = EmbeddedKafka.stop()
 
-
   "The Kafka Clients Tracing Instrumentation" should {
-
     "create a Producer Span when publish a message" in new SpanReportingTestScope(reporter) with TestTopicScope {
+      publishStringMessageToKafka(testTopicName, "Hello world!!!!!")
+      awaitNumReportedSpans(1)
 
+      assertReportedSpan(_.operationName == "send") { span =>
+        span.metricTags.get(plain("component")) shouldBe "kafka.producer"
+        span.metricTags.get(plain("span.kind")) shouldBe "producer"
+        span.tags.get(plain("kafka.topic")) shouldBe testTopicName
+        span.tags.get(plain("kafka.key")) shouldBe KafkaInstrumentation.Keys.Null
+        span.tags.get(plain("kafka.partition")) shouldBe KafkaInstrumentation.Keys.Null
+      }
 
-        publishStringMessageToKafka(testTopicName, "Hello world!!!!!")
-
-        awaitNumReportedSpans(1)
-
-        assertReportedSpan(_.operationName == "send") { span =>
-          span.metricTags.get(plain("component")) shouldBe "kafka.producer"
-          span.metricTags.get(plain("span.kind")) shouldBe "producer"
-          span.tags.get(plain("kafka.topic")) shouldBe testTopicName
-          span.tags.get(plain("kafka.key")) shouldBe Client.Keys.Null
-          span.tags.get(plain("kafka.partition")) shouldBe Client.Keys.Null
-        }
-
-        assertNoSpansReported()
+      assertNoSpansReported()
     }
 
     "fail produce span when producing fails" in new SpanReportingTestScope(reporter) {
+      Try(publishStringMessageToKafka("non-existent-topic", "msg to noone"))
 
-        Try(publishStringMessageToKafka("non-existent-topic", "msg to noone"))
+      awaitNumReportedSpans(1)
 
-        awaitNumReportedSpans(1)
-
-        assertReportedSpan(_.operationName == "send") { span =>
-          span.hasError should be (true)
-        }
+      assertReportedSpan(_.operationName == "send") { span =>
+        span.hasError should be (true)
+      }
     }
 
     "create a Producer/Consumer Span when publish/consume a message" in new SpanReportingTestScope(reporter) with TestTopicScope  {
+      import net.manub.embeddedkafka.Codecs.stringDeserializer
 
+      publishStringMessageToKafka(testTopicName, "Hello world!!!")
+      val consumedRecord = consumeFirstRawRecord[String, String](testTopicName)
+      consumedRecord.value() shouldBe "Hello world!!!"
 
-        import net.manub.embeddedkafka.Codecs.stringDeserializer
+      awaitNumReportedSpans(3)
 
-        publishStringMessageToKafka(testTopicName, "Hello world!!!")
-        val consumedRecord = consumeFirstRawRecord[String, String](testTopicName)
-        consumedRecord.value() shouldBe "Hello world!!!"
+      assertReportedSpan(_.operationName == "send") { span =>
+        span.metricTags.get(plain("component")) shouldBe "kafka.producer"
+        span.metricTags.get(plain("span.kind")) shouldBe "producer"
+        span.tags.get(plain("kafka.topic")) shouldBe testTopicName
+        span.tags.get(plain("kafka.key")) shouldBe KafkaInstrumentation.Keys.Null
+        span.tags.get(plain("kafka.partition")) shouldBe KafkaInstrumentation.Keys.Null
+      }
 
-        awaitNumReportedSpans(3)
+      assertReportedSpan(_.operationName == "poll") { span =>
+        span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
+        span.metricTags.get(plain("span.kind")) shouldBe "consumer"
+        span.tags.get(plain("kafka.groupId")) should not be empty
+        span.tags.get(plain("kafka.clientId")) should not be empty
+        span.tags.get(plain("kafka.partitions")) should not be empty
+        span.tags.get(plain("kafka.topics")) should not be empty
+      }
 
-        assertReportedSpan(_.operationName == "send") { span =>
-          span.metricTags.get(plain("component")) shouldBe "kafka.producer"
-          span.metricTags.get(plain("span.kind")) shouldBe "producer"
-          span.tags.get(plain("kafka.topic")) shouldBe testTopicName
-          span.tags.get(plain("kafka.key")) shouldBe Client.Keys.Null
-          span.tags.get(plain("kafka.partition")) shouldBe Client.Keys.Null
-        }
-
-        assertReportedSpan(_.operationName == "poll") { span =>
-          span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
-          span.metricTags.get(plain("span.kind")) shouldBe "consumer"
-          span.tags.get(plain("kafka.groupId")) should not be empty
-          span.tags.get(plain("kafka.clientId")) should not be empty
-          span.tags.get(plain("kafka.partitions")) should not be empty
-          span.tags.get(plain("kafka.topics")) should not be empty
-        }
-
-        assertReportedSpan(_.operationName == "consumed-record") { span =>
-          span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
-          span.metricTags.get(plain("span.kind")) shouldBe "consumer"
-          span.tags.get(plain("kafka.topic")) shouldBe testTopicName
-          span.tags.get(plain("kafka.clientId")) should not be empty
-          span.tags.get(plain("kafka.groupId")) should not be empty
-          span.tags.get(plainLong("kafka.partition")) shouldBe 0L
-          span.tags.get(plainLong("kafka.timestamp")) shouldBe consumedRecord.timestamp()
-          span.tags.get(plain("kafka.timestampType")) shouldBe consumedRecord.timestampType().name
-        }
+      assertReportedSpan(_.operationName == "consumed-record") { span =>
+        span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
+        span.metricTags.get(plain("span.kind")) shouldBe "consumer"
+        span.tags.get(plain("kafka.topic")) shouldBe testTopicName
+        span.tags.get(plain("kafka.clientId")) should not be empty
+        span.tags.get(plain("kafka.groupId")) should not be empty
+        span.tags.get(plainLong("kafka.partition")) shouldBe 0L
+        span.tags.get(plainLong("kafka.timestamp")) shouldBe consumedRecord.timestamp()
+        span.tags.get(plain("kafka.timestampType")) shouldBe consumedRecord.timestampType().name
+      }
     }
 
     "create multiple Producer/Consumer Spans when publish/consume multiple messages - with autoCommit=true (one batch)" in new SpanReportingTestScope(reporter) with TestTopicScope {
+      publishStringMessageToKafka(testTopicName, "m1")
+      publishStringMessageToKafka(testTopicName, "m2")
 
+      implicit val stringDeser = new StringDeserializer
 
-        publishStringMessageToKafka(testTopicName, "m1")
-        publishStringMessageToKafka(testTopicName, "m2")
-
-        implicit val stringDeser = new StringDeserializer
-
-        consumeNumberMessagesFrom[String](testTopicName,2) should contain allOf ("m1", "m2")
-        awaitNumReportedSpans(5)
-        // one poll operation (batch due to autoCommit=true)
-        assertReportedSpans(s => s.operationName == "poll"){ spans =>
-          spans should have size 1
-        }
-        assertReportedSpans(_.operationName == "consumed-record"){ spans =>
-          spans should have size 2
-          spans.map(_.trace.id.string).distinct should have size 2
-        }
-        DotFileGenerator.dumpToDotFile("client-autoCommit", reportedSpans)
+      consumeNumberMessagesFrom[String](testTopicName,2) should contain allOf ("m1", "m2")
+      awaitNumReportedSpans(5)
+      // one poll operation (batch due to autoCommit=true)
+      assertReportedSpans(s => s.operationName == "poll"){ spans =>
+        spans should have size 1
+      }
+      assertReportedSpans(_.operationName == "consumed-record"){ spans =>
+        spans should have size 2
+        spans.map(_.trace.id.string).distinct should have size 2
+      }
+      DotFileGenerator.dumpToDotFile("client-autoCommit", reportedSpans)
     }
 
     "create multiple Producer/Consumer Spans when publish/consume multiple messages - with autoCommit=false (multiple polls)" in new SpanReportingTestScope(reporter) with TestTopicScope {
+      publishStringMessageToKafka(testTopicName, "m1")
+      publishStringMessageToKafka(testTopicName, "m2")
 
-
-        publishStringMessageToKafka(testTopicName, "m1")
-        publishStringMessageToKafka(testTopicName, "m2")
-
-        consumeFirstStringMessageFrom(testTopicName, autoCommit = false) shouldBe "m1"
-        consumeFirstStringMessageFrom(testTopicName, autoCommit = false) shouldBe "m2"
-        awaitNumReportedSpans(7)
-        // two poll operations
-        assertReportedSpans(s => s.operationName == "poll"){ spans =>
-          spans should have size 2
-        }
-        assertReportedSpans(_.operationName == "consumed-record"){ spans =>
-          spans should have size 3
-          spans.map(_.trace.id.string).distinct should have size 2
-        }
-        DotFileGenerator.dumpToDotFile("client-noAutoCommit", reportedSpans)
+      consumeFirstStringMessageFrom(testTopicName, autoCommit = false) shouldBe "m1"
+      consumeFirstStringMessageFrom(testTopicName, autoCommit = false) shouldBe "m2"
+      awaitNumReportedSpans(7)
+      // two poll operations
+      assertReportedSpans(s => s.operationName == "poll"){ spans =>
+        spans should have size 2
+      }
+      assertReportedSpans(_.operationName == "consumed-record"){ spans =>
+        spans should have size 3
+        spans.map(_.trace.id.string).distinct should have size 2
+      }
+      DotFileGenerator.dumpToDotFile("client-noAutoCommit", reportedSpans)
     }
 
     "create a Producer/Consumer Span when publish/consume a message without follow-strategy and expect a linked span" in new SpanReportingTestScope(reporter) with TestTopicScope {
+      Kamon.reconfigure(ConfigFactory.parseString("kamon.instrumentation.kafka.client.follow-strategy = false").withFallback(Kamon.config()))
 
-        Kamon.reconfigure(ConfigFactory.parseString("kamon.instrumentation.kafka.client.follow-strategy = false").withFallback(Kamon.config()))
+      publishStringMessageToKafka(testTopicName, "Hello world!!!")
+      consumeFirstStringMessageFrom(testTopicName, autoCommit = true) shouldBe "Hello world!!!"
 
-        publishStringMessageToKafka(testTopicName, "Hello world!!!")
-        consumeFirstStringMessageFrom(testTopicName, autoCommit = true) shouldBe "Hello world!!!"
+      awaitNumReportedSpans(3)
 
-        awaitNumReportedSpans(3)
+      var sendingSpan: Option[Span.Finished] = None
+      assertReportedSpan(_.operationName == "send") { span =>
+        span.metricTags.get(plain("span.kind")) shouldBe "producer"
+        span.metricTags.get(plain("component")) shouldBe "kafka.producer"
+        span.tags.get(plain("kafka.clientId")) should not be empty
+        span.tags.get(plain("kafka.topic")) shouldBe testTopicName
+        span.tags.get(plain("kafka.key")) shouldBe KafkaInstrumentation.Keys.Null
+        span.tags.get(plain("kafka.partition")) shouldBe KafkaInstrumentation.Keys.Null
+        sendingSpan = Some(span)
+      }
 
-        var sendingSpan: Option[Span.Finished] = None
-        assertReportedSpan(_.operationName == "send") { span =>
-          span.metricTags.get(plain("span.kind")) shouldBe "producer"
-          span.metricTags.get(plain("component")) shouldBe "kafka.producer"
-          span.tags.get(plain("kafka.clientId")) should not be empty
-          span.tags.get(plain("kafka.topic")) shouldBe testTopicName
-          span.tags.get(plain("kafka.key")) shouldBe Client.Keys.Null
-          span.tags.get(plain("kafka.partition")) shouldBe Client.Keys.Null
-          sendingSpan = Some(span)
-        }
+      assertReportedSpan(_.operationName == "poll") { span =>
+        span.metricTags.get(plain("span.kind")) shouldBe "consumer"
+        span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
+      }
 
-        assertReportedSpan(_.operationName == "poll") { span =>
-          span.metricTags.get(plain("span.kind")) shouldBe "consumer"
-          span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
-        }
+      assertReportedSpan(_.operationName == "consumed-record") { span =>
+        span.metricTags.get(plain("span.kind")) shouldBe "consumer"
+        span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
+        span.tags.get(plain("kafka.topic")) shouldBe testTopicName
+        span.tags.get(plain("kafka.clientId")) should not be empty
+        span.tags.get(plain("kafka.groupId")) should not be empty
+        span.tags.get(plainLong("kafka.partition")) shouldBe 0L
+        span.links should have size 2 // poll-span AND the original send span
+        val sendinglinks = span.links.filter(_.trace.id == sendingSpan.get.trace.id)
+        sendinglinks should have size 1
+        sendinglinks.head.trace.id shouldBe sendingSpan.get.trace.id
+        sendinglinks.head.spanId shouldBe sendingSpan.get.id
+      }
 
-        assertReportedSpan(_.operationName == "consumed-record") { span =>
-          span.metricTags.get(plain("span.kind")) shouldBe "consumer"
-          span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
-          span.tags.get(plain("kafka.topic")) shouldBe testTopicName
-          span.tags.get(plain("kafka.clientId")) should not be empty
-          span.tags.get(plain("kafka.groupId")) should not be empty
-          span.tags.get(plainLong("kafka.partition")) shouldBe 0L
-          span.links should have size 2 // poll-span AND the original send span
-          val sendinglinks = span.links.filter(_.trace.id == sendingSpan.get.trace.id)
-          sendinglinks should have size 1
-          sendinglinks.head.trace.id shouldBe sendingSpan.get.trace.id
-          sendinglinks.head.spanId shouldBe sendingSpan.get.id
-        }
-
-        assertNoSpansReported()
+      assertNoSpansReported()
     }
 
     "create a Producer/Consumer Span when publish/consume a message with delayed spans" in new SpanReportingTestScope(reporter) with TestTopicScope {
+      Kamon.reconfigure(ConfigFactory.parseString("""
+          |kamon.instrumentation.kafka.client.tracing.use-delayed-spans = true
+          |kamon.instrumentation.kafka.client.tracing.continue-trace-on-consumer = false
+      """.stripMargin).withFallback(Kamon.config()))
+      KafkaInstrumentation.settings.useDelayedSpans shouldBe true
 
-        Kamon.reconfigure(ConfigFactory.parseString("""
-            |kamon.instrumentation.kafka.client.use-delayed-spans = true
-            |kamon.instrumentation.kafka.client.follow-strategy = false
-        """.stripMargin).withFallback(Kamon.config()))
-        Client.useDelayedSpans shouldBe true
+      publishStringMessageToKafka(testTopicName, "Hello world!!!")
+      consumeFirstStringMessageFrom(testTopicName) shouldBe "Hello world!!!"
 
-        publishStringMessageToKafka(testTopicName, "Hello world!!!")
-        consumeFirstStringMessageFrom(testTopicName) shouldBe "Hello world!!!"
+      awaitNumReportedSpans(3)
 
-        awaitNumReportedSpans(3)
+      var sendingSpan: Option[Span.Finished] = None
+      assertReportedSpan(_.operationName == "send") { span =>
+        span.metricTags.get(plain("span.kind")) shouldBe "producer"
+        span.metricTags.get(plain("component")) shouldBe "kafka.producer"
+        span.tags.get(plain("kafka.clientId")) should not be empty
+        span.tags.get(plain("kafka.topic")) shouldBe testTopicName
+        span.tags.get(plain("kafka.key")) shouldBe KafkaInstrumentation.Keys.Null
+        span.tags.get(plain("kafka.partition")) shouldBe KafkaInstrumentation.Keys.Null
+        sendingSpan = Some(span)
+      }
 
-        var sendingSpan: Option[Span.Finished] = None
-        assertReportedSpan(_.operationName == "send") { span =>
-          span.metricTags.get(plain("span.kind")) shouldBe "producer"
-          span.metricTags.get(plain("component")) shouldBe "kafka.producer"
-          span.tags.get(plain("kafka.clientId")) should not be empty
-          span.tags.get(plain("kafka.topic")) shouldBe testTopicName
-          span.tags.get(plain("kafka.key")) shouldBe Client.Keys.Null
-          span.tags.get(plain("kafka.partition")) shouldBe Client.Keys.Null
-          sendingSpan = Some(span)
-        }
+      assertReportedSpan(_.operationName == "poll") { span =>
+        span.metricTags.get(plain("span.kind")) shouldBe "consumer"
+        span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
+      }
 
-        assertReportedSpan(_.operationName == "poll") { span =>
-          span.metricTags.get(plain("span.kind")) shouldBe "consumer"
-          span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
-        }
+      assertReportedSpan(_.operationName == "consumed-record") { span =>
+        span.wasDelayed shouldBe true
+        span.metricTags.get(plain("span.kind")) shouldBe "consumer"
+        span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
+        span.tags.get(plain("kafka.topic")) shouldBe testTopicName
+        span.tags.get(plain("kafka.clientId")) should not be empty
+        span.tags.get(plain("kafka.groupId")) should not be empty
+        span.tags.get(plainLong("kafka.partition")) shouldBe 0L
+        span.links should have size 2
+        val sendinglinks = span.links.filter(_.trace.id == sendingSpan.get.trace.id)
+        sendinglinks should have size 1
+        val link = sendinglinks.head
+        link.trace.id shouldBe sendingSpan.get.trace.id
+        link.spanId shouldBe sendingSpan.get.id
+      }
 
-        assertReportedSpan(_.operationName == "consumed-record") { span =>
-          span.wasDelayed shouldBe true
-          span.metricTags.get(plain("span.kind")) shouldBe "consumer"
-          span.metricTags.get(plain("component")) shouldBe "kafka.consumer"
-          span.tags.get(plain("kafka.topic")) shouldBe testTopicName
-          span.tags.get(plain("kafka.clientId")) should not be empty
-          span.tags.get(plain("kafka.groupId")) should not be empty
-          span.tags.get(plainLong("kafka.partition")) shouldBe 0L
-          span.links should have size 2
-          val sendinglinks = span.links.filter(_.trace.id == sendingSpan.get.trace.id)
-          sendinglinks should have size 1
-          val link = sendinglinks.head
-          link.trace.id shouldBe sendingSpan.get.trace.id
-          link.spanId shouldBe sendingSpan.get.id
-        }
-
-        assertNoSpansReported()
+      assertNoSpansReported()
     }
   }
 }

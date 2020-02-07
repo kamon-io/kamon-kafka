@@ -48,7 +48,6 @@ abstract class SpanReportingTestScope(_reporter: TestSpanReporter.BufferingSpanR
 
   def awaitNumReportedSpans(numOfExpectedSpans: Int)(implicit timeout: PatienceConfiguration.Timeout): Unit = {
     eventually(timeout) {
-      println("collecting")
       collectReportedSpans()
       _reportedSpans.size shouldBe numOfExpectedSpans
     }

@@ -16,7 +16,6 @@
 
 package kamon.instrumentation.kafka.client
 
-import kamon.context.Storage.Scope
 import kamon.instrumentation.context.HasContext
 import kamon.instrumentation.kafka.client.advisor.SendMethodAdvisor
 import kamon.trace.Span

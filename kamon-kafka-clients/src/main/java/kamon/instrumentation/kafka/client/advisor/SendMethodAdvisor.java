@@ -17,7 +17,7 @@ package kamon.instrumentation.kafka.client.advisor;
 import kamon.Kamon;
 import kamon.context.Context;
 import kamon.instrumentation.context.HasContext;
-import kamon.instrumentation.kafka.client.Client;
+import kamon.instrumentation.kafka.client.KafkaInstrumentation;
 import kamon.instrumentation.kafka.client.ContextSerializationHelper;
 import kamon.instrumentation.kafka.client.ProducerCallback;
 import kamon.trace.Span;
@@ -36,8 +36,7 @@ public class SendMethodAdvisor {
                                @Advice.FieldValue("clientId") String clientId) {
         Context recordContext = ((HasContext) record).context();
 
-        String nullKey = Client.Keys$.MODULE$.Null();
-
+        String nullKey = KafkaInstrumentation.Keys$.MODULE$.Null();
         String topic = record.topic() == null ? nullKey : record.topic();
         String partition = record.partition() == null ? nullKey : record.partition().toString();
         String key = record.key() == null ? nullKey : record.key().toString();

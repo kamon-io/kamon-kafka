@@ -20,7 +20,7 @@ import java.time.Duration
 import com.typesafe.config.ConfigFactory
 import kamon.context.Context
 import kamon.Kamon
-import kamon.instrumentation.kafka.client.Client
+import kamon.instrumentation.kafka.client.KafkaInstrumentation
 import kamon.instrumentation.kafka.streams.testutil.StreamsTestSupport
 import kamon.instrumentation.kafka.testutil.{DotFileGenerator, SpanReportingTestScope, TestSpanReporting}
 import kamon.tag.Lookups._
@@ -74,7 +74,7 @@ class KafkaStreamsTracingInstrumentationSpec extends WordSpec
           |kamon.instrumentation.kafka.streams.trace-nodes = true
           |""".stripMargin)
       // ... and ensure that it is active
-      Client.followStrategy shouldBe true
+      KafkaInstrumentation.followStrategy shouldBe true
       Streams.traceNodes shouldBe true
 
       val streamAppId = "SimpleStream_AppId"
