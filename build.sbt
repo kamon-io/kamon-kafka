@@ -13,8 +13,8 @@
  * =========================================================================================
  */
 
-val kamonCore           = "io.kamon"            %% "kamon-core"                       % "2.0.0"
-val kamonTestkit        = "io.kamon"            %% "kamon-testkit"                    % "2.0.0"
+val kamonCore           = "io.kamon"            %% "kamon-core"                       % "2.0.4"
+val kamonTestkit        = "io.kamon"            %% "kamon-testkit"                    % "2.0.4"
 val scalaExtension      = "io.kamon"            %% "kamon-instrumentation-common"     % "2.0.0"
 
 val kafkaClient         = "org.apache.kafka"    % "kafka-clients"	                    % "2.3.0"
