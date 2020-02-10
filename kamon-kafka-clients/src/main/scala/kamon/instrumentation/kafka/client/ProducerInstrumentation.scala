@@ -16,6 +16,8 @@
 
 package kamon.instrumentation.kafka.client
 
+import kamon.Kamon
+import kamon.context.Context
 import kamon.instrumentation.context.HasContext
 import kamon.instrumentation.kafka.client.advisor.SendMethodAdvisor
 import kamon.trace.Span
@@ -37,10 +39,13 @@ class ProducerInstrumentation extends InstrumentationBuilder {
 /**
   * Producer Callback Wrapper
   */
-final class ProducerCallback(callback: Callback, sendingSpan: Span) extends Callback {
+final class ProducerCallback(callback: Callback, sendingSpan: Span, context: Context) extends Callback {
   override def onCompletion(metadata: RecordMetadata, exception: Exception): Unit = {
     if(exception != null) sendingSpan.fail(exception.getMessage, exception)
-    try if(callback != null) callback.onCompletion(metadata, exception)
+    try {
+      if(callback != null)
+        Kamon.runWithContext(context)(callback.onCompletion(metadata, exception))
+    }
     finally {
       sendingSpan.finish()
     }

@@ -52,7 +52,7 @@ public class SendMethodAdvisor {
         Context ctx  = recordContext.withEntry(Span.Key(), span);
         record.headers().add("kamon-context", ContextSerializationHelper.toByteArray(ctx));
 
-        callback = new ProducerCallback(callback, span);
+        callback = new ProducerCallback(callback, span, ctx);
     }
 
     @Advice.OnMethodExit(onThrowable = Throwable.class, suppress = Throwable.class)
